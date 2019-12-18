@@ -12,6 +12,7 @@ from imgaug.augmenters.debug import *
 from imgaug.augmenters.edges import *
 from imgaug.augmenters.flip import *
 from imgaug.augmenters.geometric import *
+from imgaug.augmenters.imgcorrupt import *
 from imgaug.augmenters.meta import *
 from imgaug.augmenters.pooling import *
 from imgaug.augmenters.segmentation import *
