@@ -1896,6 +1896,152 @@ class AdditiveGaussianNoise(unittest.TestCase):
         runtest_pickleable_uint8_img(aug, iterations=2)
 
 
+class TestCutout(unittest.TestCase):
+    def setUp(self):
+        reseed()
+
+    def test___init___defaults(self):
+        aug = iaa.Cutout()
+        assert aug.nb_iterations.value == 1
+        assert isinstance(aug.position[0], iap.Uniform)
+        assert isinstance(aug.position[1], iap.Uniform)
+        assert np.isclose(aug.size.value, 0.2)
+        assert aug.fill_mode.value == "constant"
+        assert aug.cval.value == 128
+        assert aug.per_channel.value == 0
+
+    def test___init___custom(self):
+        aug = iaa.Cutout(
+            nb_iterations=1,
+            position=(0.5, 0.5),
+            size=0.1,
+            fill_mode=["gaussian", "constant"],
+            cval=(0, 255),
+            per_channel=0.5
+        )
+        assert aug.nb_iterations.value == 1
+        assert np.isclose(aug.position[0].value, 0.5)
+        assert np.isclose(aug.position[1].value, 0.5)
+        assert np.isclose(aug.size.value, 0.1)
+        assert aug.fill_mode.a == ["gaussian", "constant"]
+        assert np.isclose(aug.cval.a.value, 0)
+        assert np.isclose(aug.cval.b.value, 255)
+        assert np.isclose(aug.per_channel.p.value, 0.5)
+
+    def test___init___fill_mode_is_stochastic_param(self):
+        param = iap.Deterministic("constant")
+        aug = iaa.Cutout(fill_mode=param)
+        assert aug.fill_mode is param
+
+    @mock.patch("imgaug.augmenters.arithmetic.apply_cutout_")
+    def test_mocked(self, mock_apply):
+        aug = iaa.Cutout(nb_iterations=2,
+                         position=(0.5, 0.6),
+                         size=iap.DeterministicList([0.1, 0.2]),
+                         fill_mode="gaussian",
+                         cval=1,
+                         per_channel=True)
+        image = np.zeros((3, 3, 3), dtype=np.uint8)
+
+        # dont return image itself, otherwise the loop below will fail
+        # at its second iteration as the method is expected to handle
+        # internally a copy of the image and not the image itself
+        mock_apply.return_value = np.copy(image)
+
+        _ = aug(image=image)
+
+        assert mock_apply.call_count == 2
+
+        for call_idx in np.arange(2):
+            args = mock_apply.call_args_list[call_idx][0]
+            kwargs = mock_apply.call_args_list[call_idx][1]
+            assert args[0] is not image
+            assert np.array_equal(args[0], image)
+            assert np.isclose(kwargs["x_frac"], 0.5)
+            assert np.isclose(kwargs["y_frac"], 0.6)
+            assert np.isclose(kwargs["height_frac"], 0.1)
+            assert np.isclose(kwargs["width_frac"], 0.2)
+            assert kwargs["fill_mode"] == "gaussian"
+            assert np.array_equal(kwargs["cval"], [1, 1, 1])
+            assert kwargs["per_channel"] == True
+            assert isinstance(kwargs["random_state"], iarandom.RNG)
+
+    def test_simple_image(self):
+        aug = iaa.Cutout(nb_iterations=2,
+                         position=(
+                             iap.DeterministicList([0.2, 0.8]),
+                             iap.DeterministicList([0.2, 0.8])
+                         ),
+                         size=0.2,
+                         fill_mode="constant",
+                         cval=iap.DeterministicList([0, 0, 0, 1, 1, 1]))
+        image = np.full((100, 100, 3), 255, dtype=np.uint8)
+
+        for _ in np.arange(3):
+            images_aug = aug(images=[image, image])
+            for image_aug in images_aug:
+                values = np.unique(image_aug)
+                assert len(values) == 3
+                assert 0 in values
+                assert 1 in values
+                assert 255 in values
+
+    def test_batch_contains_only_non_image_data(self):
+        aug = iaa.Cutout()
+        segmap_arr = np.ones((3, 3, 1), dtype=np.int32)
+        segmap = ia.SegmentationMapsOnImage(segmap_arr, shape=(3, 3, 3))
+        segmap_aug = aug.augment_segmentation_maps(segmap)
+        assert np.array_equal(segmap.get_arr(), segmap_aug.get_arr())
+
+    def test_sampling_when_position_is_stochastic_parameter(self):
+        # sampling of position works slightly differently when it is a single
+        # parameter instead of tuple (paramX, paramY), so we have an extra
+        # test for that situation here
+        param = iap.DeterministicList([0.5, 0.6])
+        aug = iaa.Cutout(position=param)
+        samples = aug._draw_samples([
+            np.zeros((3, 3, 3), dtype=np.uint8),
+            np.zeros((3, 3, 3), dtype=np.uint8)
+        ], iarandom.RNG(0))
+        assert np.allclose(samples.pos_x, [0.5, 0.5])
+        assert np.allclose(samples.pos_y, [0.6, 0.6])
+
+    def test_determinism(self):
+        aug = iaa.Cutout(nb_iterations=(1, 3),
+                         size=(0.1, 0.2),
+                         fill_mode=["gaussian", "constant"],
+                         cval=(0, 255))
+        image = np.mod(
+            np.arange(100*100*3), 256
+        ).reshape((100, 100, 3)).astype(np.uint8)
+
+        sums = []
+        for _ in np.arange(10):
+            aug_det = aug.to_deterministic()
+            image_aug1 = aug_det(image=image)
+            image_aug2 = aug_det(image=image)
+            assert np.array_equal(image_aug1, image_aug2)
+            sums.append(np.sum(image_aug1))
+        assert len(np.unique(sums)) > 1
+
+    def test_get_parameters(self):
+        aug = iaa.Cutout(
+            nb_iterations=1,
+            position=(0.5, 0.5),
+            size=0.1,
+            fill_mode=["gaussian", "constant"],
+            cval=(0, 255),
+            per_channel=0.5
+        )
+        params = aug.get_parameters()
+        assert params[0] is aug.nb_iterations
+        assert params[1] is aug.position
+        assert params[2] is aug.size
+        assert params[3] is aug.fill_mode
+        assert params[4] is aug.cval
+        assert params[5] is aug.per_channel
+
+
 class TestDropout(unittest.TestCase):
     def setUp(self):
         reseed()
