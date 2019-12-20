@@ -50,6 +50,20 @@ from .. import parameters as iap
 from .. import dtypes as iadt
 
 
+# fill modes for apply_cutout_() and Cutout augmenter
+# contains roughly:
+#     'str fill_mode_name => (str module_name, str function_name)'
+# We could also assign the function to each fill mode name instead of its
+# name, but that has the disadvantage that these aren't defined yet (they
+# are defined further below) and that during unittesting they would be harder
+# to mock. (mock.patch() seems to not automatically replace functions
+# assigned in that way.)
+_CUTOUT_FILL_MODES = {
+    "constant": ("imgaug.augmenters.arithmetic", "_fill_rectangle_constant_"),
+    "gaussian": ("imgaug.augmenters.arithmetic", "_fill_rectangle_gaussian_")
+}
+
+
 def add_scalar(image, value):
     """Add a single scalar value or one scalar value per channel to an image.
 
@@ -637,6 +651,276 @@ def _multiply_elementwise_to_non_uint8(image, multipliers):
     )
     image = np.multiply(image, multipliers, out=image, casting="no")
     return iadt.restore_dtypes_(image, input_dtype)
+
+
+def apply_cutout(image, x_frac, y_frac, height_frac, width_frac,
+                 fill_mode="constant", cval=0, per_channel=False,
+                 random_state=None):
+    """Fill a single area within an image using a fill mode (in-place).
+
+    .. note::
+
+        Gaussian fill mode will assume that float input images contain values
+        in the interval ``[0.0, 1.0]`` and hence sample values from a
+        gaussian within that interval, i.e. from ``N(0.5, std=0.5/3)``.
+
+    dtype support::
+
+        See :func:`imgaug.augmenters.arithmetic.apply_cutout_`.
+
+    Parameters
+    ----------
+    image : ndarray
+        Image to modify. Might be modified in-place.
+
+    x_frac : number
+        See :func:`imgaug.augmenters.arithmetic.apply_cutout_`.
+
+    y_frac : number
+        See :func:`imgaug.augmenters.arithmetic.apply_cutout_`.
+
+    height_frac : number
+        See :func:`imgaug.augmenters.arithmetic.apply_cutout_`.
+
+    width_frac : number
+        See :func:`imgaug.augmenters.arithmetic.apply_cutout_`.
+
+    fill_mode : {'constant', 'gaussian'}, optional
+        See :func:`imgaug.augmenters.arithmetic.apply_cutout_`.
+
+    cval : number or tuple of number, optional
+        See :func:`imgaug.augmenters.arithmetic.apply_cutout_`.
+
+    per_channel : number or bool, optional
+        See :func:`imgaug.augmenters.arithmetic.apply_cutout_`.
+
+    random_state : imgaug.random.RNG or None, optional
+        See :func:`imgaug.augmenters.arithmetic.apply_cutout_`.
+
+    Returns
+    -------
+    ndarray
+        Image with area filled in.
+
+    """
+    return apply_cutout_(np.copy(image),
+                         x_frac, y_frac, height_frac, width_frac,
+                         fill_mode, cval, per_channel, random_state)
+
+
+def apply_cutout_(image, x_frac, y_frac, height_frac, width_frac,
+                  fill_mode="constant", cval=0, per_channel=False,
+                  random_state=None):
+    """Fill a single area within an image using a fill mode (in-place).
+
+    .. note::
+
+        Gaussian fill mode will assume that float input images contain values
+        in the interval ``[0.0, 1.0]`` and hence sample values from a
+        gaussian within that interval, i.e. from ``N(0.5, std=0.5/3)``.
+
+    dtype support::
+
+        minimum of (
+            :func:`imgaug.augmenters.arithmetic._fill_rectangle_gaussian_`,
+            :func:`imgaug.augmenters.arithmetic._fill_rectangle_constant_`
+        )
+
+    Parameters
+    ----------
+    image : ndarray
+        Image to modify. Might be modified in-place.
+
+    x_frac : number
+        Center of the area to fill along the x-axis as a
+        fraction of the axis size, i.e. in interval ``[0.0, 1.0]``.
+
+    y_frac : number
+        Center of the area to fill along the y-axis as a
+        fraction of the axis size, i.e. in interval ``[0.0, 1.0]``.
+
+    height_frac : number
+        Height of the area to fill as a fraction of the axis size,
+        i.e. in interval ``[0.0, 1.0]``.
+
+    width_frac : number
+        Width of the area to fill as a fraction of the axis size,
+        i.e. in interval ``[0.0, 1.0]``.
+
+    fill_mode : {'constant', 'gaussian'}, optional
+        Fill mode to use.
+
+    cval : number or tuple of number, optional
+        The constant value to use when filling with mode ``constant``.
+        May be an intensity value or color tuple.
+
+    per_channel : number or bool, optional
+        Whether to fill in a channelwise fashion.
+        If number then a value ``>=0.5`` will be interpreted as ``True``.
+
+    random_state : imgaug.random.RNG or None, optional
+        A random number generate to sample random values from.
+        Only required for ``fill_mode=gaussian``.
+
+    Returns
+    -------
+    ndarray
+        Image with area filled in.
+        The input image might have been modified in-place.
+
+    """
+    import importlib
+    x1, y1, x2, y2 = _compute_rectangle_position(
+        image, x_frac, y_frac, height_frac, width_frac)
+    if x2 > x1 and y2 > y1:
+        assert fill_mode in _CUTOUT_FILL_MODES, (
+            "Expected one of the following fill modes: %s. "
+            "Got: %s." % (
+                str(list(_CUTOUT_FILL_MODES.keys())), fill_mode))
+
+        module_name, fname = _CUTOUT_FILL_MODES[fill_mode]
+        module = importlib.import_module(module_name)
+        func = getattr(module, fname)
+        image = func(
+            image,
+            x1=x1, y1=y1, x2=x2, y2=y2,
+            cval=cval,
+            per_channel=(per_channel >= 0.5),
+            random_state=random_state)
+    return image
+
+
+def _compute_rectangle_position(image, x_frac, y_frac,
+                                height_frac, width_frac):
+    im_height, im_width = image.shape[0:2]
+
+    x_px = x_frac * im_width
+    y_px = y_frac * im_height
+    height = im_height * height_frac
+    width = im_width * width_frac
+
+    x1 = x_px - width/2
+    x2 = x_px + width/2
+    y1 = y_px - height/2
+    y2 = y_px + height/2
+
+    x1, x2 = np.clip(np.round((x1, x2)), 0, im_width-1)
+    y1, y2 = np.clip(np.round((y1, y2)), 0, im_height-1)
+
+    x1 = int(x1)
+    y1 = int(y1)
+    x2 = int(x2)
+    y2 = int(y2)
+
+    return x1, y1, x2, y2
+
+
+def _fill_rectangle_gaussian_(image, x1, y1, x2, y2, cval, per_channel,
+                              random_state):
+    """Fill a rectangular image area with samples from a gaussian.
+
+    dtype support::
+
+        * ``uint8``: yes; fully tested
+        * ``uint16``: yes; tested
+        * ``uint32``: yes; tested
+        * ``uint64``: limited; tested (1)
+        * ``int8``: yes; tested
+        * ``int16``: yes; tested
+        * ``int32``: yes; tested
+        * ``int64``: limited; tested (1)
+        * ``float16``: yes; tested (2)
+        * ``float32``: yes; tested (2)
+        * ``float64``: yes; tested (2)
+        * ``float128``: limited; tested (1) (2)
+        * ``bool``: yes; tested
+
+        - (1) Possible loss of resolution due to gaussian values being sampled
+              as ``float64`` s.
+        - (2) Float input arrays are assumed to be in interval ``[0.0, 1.0]``
+              and all gaussian samples are within that interval too.
+
+    """
+    # for float we assume value range [0.0, 1.0]
+    # that matches the common use case and also makes the tests way easier
+    # we also set bool here manually as the center value returned by
+    # get_value_range_for_dtype() is None
+    kind = image.dtype.kind
+    if kind in ["f", "b"]:
+        min_value = 0.0
+        center_value = 0.5
+        max_value = 1.0
+    else:
+        min_value, center_value, max_value = iadt.get_value_range_of_dtype(
+            image.dtype)
+
+    # set standard deviation to 1/3 of value range to get 99.7% of values
+    # within [min v.r., max v.r.]
+    # we also divide by 2 because we want to spread towards the
+    # "left"/"right" of the center value by half of the value range
+    stddev = (float(max_value) - float(min_value)) / 2.0 / 3.0
+
+    height = y2 - y1
+    width = x2 - x1
+    shape = (height, width)
+    if per_channel and image.ndim == 3:
+        shape = shape + (image.shape[2],)
+    rect = random_state.normal(center_value, stddev, size=shape)
+    if image.dtype.kind == "b":
+        rect_vr = (rect > 0.5)
+    else:
+        rect_vr = np.clip(rect, min_value, max_value).astype(image.dtype)
+
+    if image.ndim == 3:
+        image[y1:y2, x1:x2, :] = np.atleast_3d(rect_vr)
+    else:
+        image[y1:y2, x1:x2] = rect_vr
+
+    return image
+
+
+def _fill_rectangle_constant_(image, x1, y1, x2, y2, cval, per_channel,
+                              random_state):
+    """Fill a rectangular area within an image with constant value(s).
+
+    `cval` may be a single value or one per channel. If the number of items
+    in `cval` does not match the number of channels in `image`, it may
+    be tiled up to the number of channels.
+
+    dtype support::
+
+        * ``uint8``: yes; fully tested
+        * ``uint16``: yes; tested
+        * ``uint32``: yes; tested
+        * ``uint64``: yes; tested
+        * ``int8``: yes; tested
+        * ``int16``: yes; tested
+        * ``int32``: yes; tested
+        * ``int64``: yes; tested
+        * ``float16``: yes; tested
+        * ``float32``: yes; tested
+        * ``float64``: yes; tested
+        * ``float128``: yes; tested
+        * ``bool``: yes; tested
+
+    """
+    if ia.is_iterable(cval):
+        if per_channel:
+            nb_channels = None if image.ndim == 2 else image.shape[-1]
+            if nb_channels is None:
+                cval = cval[0]
+            elif len(cval) < nb_channels:
+                mul = int(np.ceil(nb_channels / len(cval)))
+                cval = np.tile(cval, (mul,))[0:nb_channels]
+            elif len(cval) > nb_channels:
+                cval = cval[0:nb_channels]
+        else:
+            cval = cval[0]
+
+    # without the array(), uint64 max value is assigned as 0
+    image[y1:y2, x1:x2, ...] = np.array(cval, dtype=image.dtype)
+
+    return image
 
 
 def replace_elementwise_(image, mask, replacements):

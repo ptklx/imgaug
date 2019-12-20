@@ -23,10 +23,696 @@ import imgaug as ia
 from imgaug import augmenters as iaa
 from imgaug import parameters as iap
 from imgaug import dtypes as iadt
+from imgaug import random as iarandom
 from imgaug.testutils import (array_equal_lists, keypoints_equal, reseed,
                               runtest_pickleable_uint8_img)
 import imgaug.augmenters.arithmetic as arithmetic_lib
 import imgaug.augmenters.contrast as contrast_lib
+
+
+class Test_apply_cutout(unittest.TestCase):
+    @mock.patch("imgaug.augmenters.arithmetic.apply_cutout_")
+    def test_mocked(self, mock_inplace):
+        image = np.mod(np.arange(100*100*3), 255).astype(np.uint8).reshape(
+            (100, 100, 3))
+        mock_inplace.return_value = "foo"
+
+        rng = iarandom.RNG(0)
+        image_aug = iaa.apply_cutout(image,
+                                     x_frac=0.5,
+                                     y_frac=0.25,
+                                     height_frac=0.26,
+                                     width_frac=0.5,
+                                     fill_mode="gaussian",
+                                     cval=1,
+                                     per_channel=0.5,
+                                     random_state=rng)
+
+        assert mock_inplace.call_count == 1
+        assert image_aug == "foo"
+
+        args = mock_inplace.call_args_list[0][0]
+        kwargs = mock_inplace.call_args_list[0][1]
+        assert args[0] is not image
+        assert np.array_equal(args[0], image)
+        assert np.isclose(args[1], 0.5)
+        assert np.isclose(args[2], 0.25)
+        assert np.isclose(args[3], 0.26)
+        assert np.isclose(args[4], 0.5)
+        assert args[5] == "gaussian"
+        assert args[6] == 1
+        assert np.isclose(args[7], 0.5)
+        assert args[8] is rng
+
+
+class Test_apply_cutout_(unittest.TestCase):
+    def test_with_simple_image(self):
+        image = np.mod(np.arange(100*100*3), 255).astype(np.uint8).reshape(
+            (100, 100, 3))
+        image = 1 + image
+
+        image_aug = iaa.apply_cutout_(image,
+                                      x_frac=0.5,
+                                      y_frac=0.25,
+                                      height_frac=0.26,
+                                      width_frac=0.5,
+                                      fill_mode="constant",
+                                      cval=0,
+                                      per_channel=False,
+                                      random_state=None)
+
+        mask = np.zeros(image.shape, dtype=bool)
+        mask[25-13:25+13, 50-25:50+25, :] = True
+        overlap_inside = np.sum(image_aug[mask] == 0) / np.sum(mask)
+        overlap_outside = np.sum(image_aug[~mask] > 0) / np.sum(~mask)
+        assert image_aug is image
+        assert overlap_inside > 0.99
+        assert overlap_outside > 0.99
+
+    @mock.patch("imgaug.augmenters.arithmetic._fill_rectangle_constant_")
+    def test_fill_mode_constant_mocked(self, mock_fill):
+        self._test_with_fill_mode_mocked("constant", mock_fill)
+
+    @mock.patch("imgaug.augmenters.arithmetic._fill_rectangle_gaussian_")
+    def test_fill_mode_gaussian_mocked(self, mock_fill):
+        self._test_with_fill_mode_mocked("gaussian", mock_fill)
+
+    @classmethod
+    def _test_with_fill_mode_mocked(cls, fill_mode, mock_fill):
+        image = np.mod(np.arange(100*100*3), 256).astype(np.uint8).reshape(
+            (100, 100, 3))
+        mock_fill.return_value = image
+
+        random_state = iarandom.RNG(0)
+
+        image_aug = iaa.apply_cutout_(image,
+                                      x_frac=0.5,
+                                      y_frac=0.25,
+                                      height_frac=0.26,
+                                      width_frac=0.5,
+                                      fill_mode=fill_mode,
+                                      cval=0,
+                                      per_channel=False,
+                                      random_state=random_state)
+
+        assert mock_fill.call_count == 1
+        args = mock_fill.call_args_list[0][0]
+        kwargs = mock_fill.call_args_list[0][1]
+        assert image_aug is image
+        assert args[0] is image
+        assert kwargs["x1"] == 50-25
+        assert kwargs["x2"] == 50+25
+        assert kwargs["y1"] == 25-13
+        assert kwargs["y2"] == 25+13
+        assert kwargs["cval"] == 0
+        assert kwargs["per_channel"] is False
+        assert kwargs["random_state"] is random_state
+
+    def test_zero_height(self):
+        image = np.mod(np.arange(100*100*3), 255).astype(np.uint8).reshape(
+            (100, 100, 3))
+        image = 1 + image
+        image_cp = np.copy(image)
+
+        image_aug = iaa.apply_cutout_(image,
+                                      x_frac=0.5,
+                                      y_frac=0.25,
+                                      height_frac=0.0,
+                                      width_frac=0.5,
+                                      fill_mode="constant",
+                                      cval=0,
+                                      per_channel=False,
+                                      random_state=None)
+
+        assert np.array_equal(image_aug, image_cp)
+
+    def test_zero_height_width(self):
+        image = np.mod(np.arange(100*100*3), 255).astype(np.uint8).reshape(
+            (100, 100, 3))
+        image = 1 + image
+        image_cp = np.copy(image)
+
+        image_aug = iaa.apply_cutout_(image,
+                                      x_frac=0.5,
+                                      y_frac=0.25,
+                                      height_frac=0.0,
+                                      width_frac=0.0,
+                                      fill_mode="constant",
+                                      cval=0,
+                                      per_channel=False,
+                                      random_state=None)
+
+        assert np.array_equal(image_aug, image_cp)
+
+    def test_position_outside_of_image_rect_fully_outside(self):
+        image = np.mod(np.arange(100*100*3), 255).astype(np.uint8).reshape(
+            (100, 100, 3))
+        image = 1 + image
+        image_cp = np.copy(image)
+
+        image_aug = iaa.apply_cutout_(image,
+                                      x_frac=-0.5,
+                                      y_frac=1.5,
+                                      height_frac=0.25,
+                                      width_frac=0.5,
+                                      fill_mode="constant",
+                                      cval=0,
+                                      per_channel=False,
+                                      random_state=None)
+
+        assert np.array_equal(image_aug, image_cp)
+
+    def test_position_outside_of_image_rect_partially_inside(self):
+        image = np.mod(np.arange(100*100*3), 255).astype(np.uint8).reshape(
+            (100, 100, 3))
+        image = 1 + image
+        image_cp = np.copy(image)
+
+        image_aug = iaa.apply_cutout_(image,
+                                      x_frac=-0.25,
+                                      y_frac=-0.25,
+                                      height_frac=1.0,
+                                      width_frac=1.0,
+                                      fill_mode="constant",
+                                      cval=0,
+                                      per_channel=False,
+                                      random_state=None)
+
+        assert np.all(image_aug[0:25, 0:25] == 0)
+        assert np.all(image_aug[0:25, 25:] > 0)
+        assert np.all(image_aug[25:, :] > 0)
+
+    def test_zero_sized_axes(self):
+        shapes = [(0, 0, 0),
+                  (1, 0, 0),
+                  (0, 1, 0),
+                  (0, 1, 1),
+                  (1, 1, 0),
+                  (1, 0, 1),
+                  (1, 0),
+                  (0, 1),
+                  (0, 0)]
+        for shape in shapes:
+            with self.subTest(shape=shape):
+                image = np.zeros(shape, dtype=np.uint8)
+                image_cp = np.copy(image)
+
+                image_aug = iaa.apply_cutout_(image,
+                                              x_frac=-0.25,
+                                              y_frac=-0.25,
+                                              height_frac=1.0,
+                                              width_frac=1.0,
+                                              fill_mode="constant",
+                                              cval=0)
+
+                assert np.array_equal(image_aug, image_cp)
+
+
+class Test_fill_rectangle_gaussian_(unittest.TestCase):
+    def test_simple_image(self):
+        image = np.mod(np.arange(100*100*3), 256).astype(np.uint8).reshape(
+            (100, 100, 3))
+        image_cp = np.copy(image)
+        rng = iarandom.RNG(0)
+
+        image_aug = arithmetic_lib._fill_rectangle_gaussian_(
+            image,
+            x1=10,
+            y1=20,
+            x2=60,
+            y2=70,
+            cval=0,
+            per_channel=False,
+            random_state=rng)
+
+        assert np.array_equal(image_aug[:20, :],
+                              image_cp[:20, :])
+        assert not np.array_equal(image_aug[20:70, 10:60],
+                                  image_cp[20:70, 10:60])
+        assert np.isclose(np.average(image_aug[20:70, 10:60]), 127.5,
+                          rtol=0, atol=5.0)
+        assert np.isclose(np.std(image_aug[20:70, 10:60]), 255.0/2.0/3.0,
+                          rtol=0, atol=2.5)
+
+    def test_per_channel(self):
+        image = np.uint8([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        image = np.tile(image.reshape((1, 10, 1)), (1, 1, 3))
+
+        image_aug = arithmetic_lib._fill_rectangle_gaussian_(
+            np.copy(image),
+            x1=0, y1=0, x2=10, y2=1,
+            cval=0,
+            per_channel=False,
+            random_state=iarandom.RNG(0))
+
+        image_aug_pc = arithmetic_lib._fill_rectangle_gaussian_(
+            np.copy(image),
+            x1=0, y1=0, x2=10, y2=1,
+            cval=0,
+            per_channel=True,
+            random_state=iarandom.RNG(0))
+
+        diff11 = (image_aug[..., 0] != image_aug[..., 1])
+        diff12 = (image_aug[..., 0] != image_aug[..., 2])
+        diff21 = (image_aug_pc[..., 0] != image_aug_pc[..., 1])
+        diff22 = (image_aug_pc[..., 0] != image_aug_pc[..., 2])
+
+        assert not np.any(diff11)
+        assert not np.any(diff12)
+        assert np.any(diff21)
+        assert np.any(diff22)
+
+    def test_deterministic_with_same_seed(self):
+        image = np.uint8([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        image = np.tile(image.reshape((1, 10, 1)), (1, 1, 3))
+
+        image_aug_pc1 = arithmetic_lib._fill_rectangle_gaussian_(
+            np.copy(image),
+            x1=0, y1=0, x2=10, y2=1,
+            cval=0,
+            per_channel=True,
+            random_state=iarandom.RNG(0))
+
+        image_aug_pc2 = arithmetic_lib._fill_rectangle_gaussian_(
+            np.copy(image),
+            x1=0, y1=0, x2=10, y2=1,
+            cval=0,
+            per_channel=True,
+            random_state=iarandom.RNG(0))
+
+        image_aug_pc3 = arithmetic_lib._fill_rectangle_gaussian_(
+            np.copy(image),
+            x1=0, y1=0, x2=10, y2=1,
+            cval=0,
+            per_channel=True,
+            random_state=iarandom.RNG(1))
+
+        assert np.array_equal(image_aug_pc1, image_aug_pc2)
+        assert not np.array_equal(image_aug_pc2, image_aug_pc3)
+
+    def test_no_channels(self):
+        for per_channel in [False, True]:
+            with self.subTest(per_channel=per_channel):
+                image = np.uint8([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+                image = image.reshape((1, 10))
+
+                image_aug = arithmetic_lib._fill_rectangle_gaussian_(
+                    np.copy(image),
+                    x1=0, y1=0, x2=10, y2=1,
+                    cval=0,
+                    per_channel=per_channel,
+                    random_state=iarandom.RNG(0))
+
+                assert not np.array_equal(image_aug, image)
+
+    def test_unusual_channel_numbers(self):
+        for nb_channels in [1, 2, 3, 4, 5, 511, 512, 513]:
+            for per_channel in [False, True]:
+                with self.subTest(nb_channels=nb_channels,
+                                  per_channel=per_channel):
+                    image = np.uint8([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+                    image = np.tile(image.reshape((1, 10, 1)),
+                                    (1, 1, nb_channels))
+
+                    image_aug = arithmetic_lib._fill_rectangle_gaussian_(
+                        np.copy(image),
+                        x1=0, y1=0, x2=10, y2=1,
+                        cval=0,
+                        per_channel=True,
+                        random_state=iarandom.RNG(0))
+
+                    assert not np.array_equal(image_aug, image)
+
+    def test_other_dtypes_bool(self):
+        for per_channel in [False, True]:
+            with self.subTest(per_channel=per_channel):
+                image = np.array([0, 1], dtype=bool)
+                image = np.tile(image, (int(3*300*300/2),))
+                image = image.reshape((300, 300, 3))
+                image_cp = np.copy(image)
+                rng = iarandom.RNG(0)
+
+                image_aug = arithmetic_lib._fill_rectangle_gaussian_(
+                    image,
+                    x1=10,
+                    y1=10,
+                    x2=300-10,
+                    y2=300-10,
+                    cval=0,
+                    per_channel=per_channel,
+                    random_state=rng)
+
+                rect = image_aug[10:-10, 10:-10]
+                p_true = np.sum(rect) / rect.size
+                assert np.array_equal(image_aug[:10, :], image_cp[:10, :])
+                assert not np.array_equal(rect, image_cp[10:-10, 10:-10])
+                assert np.isclose(p_true, 0.5, rtol=0, atol=0.1)
+                if per_channel:
+                    for c in np.arange(1, image.shape[2]):
+                        assert not np.array_equal(image_aug[..., 0],
+                                                  image_aug[..., c])
+
+    def test_other_dtypes_int_uint(self):
+        dtypes = ["uint8", "uint16", "uint32", "uint64",
+                  "int8", "int16", "int32", "int64"]
+        for dtype in dtypes:
+            min_value, center_value, max_value = \
+                iadt.get_value_range_of_dtype(dtype)
+            dynamic_range = int(max_value) - int(min_value)
+
+            gaussian_min = iarandom.RNG(0).normal(min_value, 0.0001,
+                                                  size=(1,))
+            gaussian_max = iarandom.RNG(0).normal(max_value, 0.0001,
+                                                  size=(1,))
+            assert min_value - 1.0 <= gaussian_min <= min_value + 1.0
+            assert max_value - 1.0 <= gaussian_max <= max_value + 1.0
+
+            for per_channel in [False, True]:
+                with self.subTest(dtype=dtype, per_channel=per_channel):
+                    # dont generate image from choice() here, that seems
+                    # to not support uint64 (max value not in result)
+                    image = np.array([min_value, min_value+1,
+                                      int(center_value),
+                                      max_value-1, max_value], dtype=dtype)
+                    image = np.tile(image, (int(3*300*300/5),))
+                    image = image.reshape((300, 300, 3))
+                    assert min_value in image
+                    assert max_value in image
+                    image_cp = np.copy(image)
+                    rng = iarandom.RNG(0)
+
+                    image_aug = arithmetic_lib._fill_rectangle_gaussian_(
+                        image, x1=10, y1=10, x2=300-10, y2=300-10,
+                        cval=0, per_channel=per_channel, random_state=rng)
+
+                    rect = image_aug[10:-10, 10:-10]
+                    mean = np.average(np.float128(rect))
+                    std = np.std(np.float128(rect) - center_value)
+                    assert np.array_equal(image_aug[:10, :], image_cp[:10, :])
+                    assert not np.array_equal(rect,
+                                              image_cp[10:-10, 10:-10])
+                    assert np.isclose(mean, center_value, rtol=0,
+                                      atol=0.05*dynamic_range)
+                    assert np.isclose(std, dynamic_range/2.0/3.0, rtol=0,
+                                      atol=0.05*dynamic_range/2.0/3.0)
+                    assert np.min(rect) < min_value + 0.2 * dynamic_range
+                    assert np.max(rect) > max_value - 0.2 * dynamic_range
+
+                    if per_channel:
+                        for c in np.arange(1, image.shape[2]):
+                            assert not np.array_equal(image_aug[..., 0],
+                                                      image_aug[..., c])
+
+    def test_other_dtypes_float(self):
+        dtypes = ["float16", "float32", "float64", "float128"]
+        for dtype in dtypes:
+            min_value = 0.0
+            center_value = 0.5
+            max_value = 1.0
+            dynamic_range = np.float128(max_value) - np.float128(min_value)
+
+            gaussian_min = iarandom.RNG(0).normal(min_value, 0.0001,
+                                                  size=(1,))
+            gaussian_max = iarandom.RNG(0).normal(max_value, 0.0001,
+                                                  size=(1,))
+            assert min_value - 1.0 <= gaussian_min <= min_value + 1.0
+            assert max_value - 1.0 <= gaussian_max <= max_value + 1.0
+
+            for per_channel in [False, True]:
+                with self.subTest(dtype=dtype, per_channel=per_channel):
+                    # dont generate image from choice() here, that seems
+                    # to not support uint64 (max value not in result)
+                    image = np.array([min_value, min_value+1,
+                                      int(center_value),
+                                      max_value-1, max_value], dtype=dtype)
+                    image = np.tile(image, (int(3*300*300/5),))
+                    image = image.reshape((300, 300, 3))
+                    assert np.any(np.isclose(image, min_value,
+                                             rtol=0, atol=1e-4))
+                    assert np.any(np.isclose(image, max_value,
+                                             rtol=0, atol=1e-4))
+                    image_cp = np.copy(image)
+                    rng = iarandom.RNG(0)
+
+                    image_aug = arithmetic_lib._fill_rectangle_gaussian_(
+                        image, x1=10, y1=10, x2=300-10, y2=300-10,
+                        cval=0, per_channel=per_channel, random_state=rng)
+
+                    rect = image_aug[10:-10, 10:-10]
+                    mean = np.average(np.float128(rect))
+                    std = np.std(np.float128(rect) - center_value)
+                    assert np.allclose(image_aug[:10, :], image_cp[:10, :],
+                                       rtol=0, atol=1e-4)
+                    assert not np.allclose(rect, image_cp[10:-10, 10:-10],
+                                           rtol=0, atol=1e-4)
+                    assert np.isclose(mean, center_value, rtol=0,
+                                      atol=0.05*dynamic_range)
+                    assert np.isclose(std, dynamic_range/2.0/3.0, rtol=0,
+                                      atol=0.05*dynamic_range/2.0/3.0)
+                    assert np.min(rect) < min_value + 0.2 * dynamic_range
+                    assert np.max(rect) > max_value - 0.2 * dynamic_range
+
+                    if per_channel:
+                        for c in np.arange(1, image.shape[2]):
+                            assert not np.allclose(image_aug[..., 0],
+                                                   image_aug[..., c],
+                                                   rtol=0, atol=1e-4)
+
+
+class Test_fill_rectangle_constant_(unittest.TestCase):
+    def test_simple_image(self):
+        image = np.mod(np.arange(100*100*3), 256).astype(np.uint8).reshape(
+            (100, 100, 3))
+        image_cp = np.copy(image)
+
+        image_aug = arithmetic_lib._fill_rectangle_constant_(
+            image,
+            x1=10, y1=20, x2=60, y2=70,
+            cval=17, per_channel=False, random_state=None)
+
+        assert np.array_equal(image_aug[:20, :], image_cp[:20, :])
+        assert np.all(image_aug[20:70, 10:60] == 17)
+
+    def test_iterable_cval_but_per_channel_is_false(self):
+        image = np.mod(np.arange(100*100*3), 256).astype(np.uint8).reshape(
+            (100, 100, 3))
+        image_cp = np.copy(image)
+
+        image_aug = arithmetic_lib._fill_rectangle_constant_(
+            image,
+            x1=10, y1=20, x2=60, y2=70,
+            cval=[17, 21, 25], per_channel=False, random_state=None)
+
+        assert np.array_equal(image_aug[:20, :], image_cp[:20, :])
+        assert np.all(image_aug[20:70, 10:60] == 17)
+
+    def test_iterable_cval_with_per_channel_is_true(self):
+        image = np.mod(np.arange(100*100*3), 256).astype(np.uint8).reshape(
+            (100, 100, 3))
+        image_cp = np.copy(image)
+
+        image_aug = arithmetic_lib._fill_rectangle_constant_(
+            image,
+            x1=10, y1=20, x2=60, y2=70,
+            cval=[17, 21, 25], per_channel=True, random_state=None)
+
+        assert np.array_equal(image_aug[:20, :], image_cp[:20, :])
+        assert np.all(image_aug[20:70, 10:60, 0] == 17)
+        assert np.all(image_aug[20:70, 10:60, 1] == 21)
+        assert np.all(image_aug[20:70, 10:60, 2] == 25)
+
+    def test_iterable_cval_with_per_channel_is_true_channel_mismatch(self):
+        image = np.mod(np.arange(100*100*5), 256).astype(np.uint8).reshape(
+            (100, 100, 5))
+        image_cp = np.copy(image)
+
+        image_aug = arithmetic_lib._fill_rectangle_constant_(
+            image,
+            x1=10, y1=20, x2=60, y2=70,
+            cval=[17, 21], per_channel=True, random_state=None)
+
+        assert np.array_equal(image_aug[:20, :], image_cp[:20, :])
+        assert np.all(image_aug[20:70, 10:60, 0] == 17)
+        assert np.all(image_aug[20:70, 10:60, 1] == 21)
+        assert np.all(image_aug[20:70, 10:60, 2] == 17)
+        assert np.all(image_aug[20:70, 10:60, 3] == 21)
+        assert np.all(image_aug[20:70, 10:60, 4] == 17)
+
+    def test_single_cval_with_per_channel_is_true(self):
+        image = np.mod(np.arange(100*100*3), 256).astype(np.uint8).reshape(
+            (100, 100, 3))
+        image_cp = np.copy(image)
+
+        image_aug = arithmetic_lib._fill_rectangle_constant_(
+            image,
+            x1=10, y1=20, x2=60, y2=70,
+            cval=17, per_channel=True, random_state=None)
+
+        assert np.array_equal(image_aug[:20, :], image_cp[:20, :])
+        assert np.all(image_aug[20:70, 10:60, 0] == 17)
+        assert np.all(image_aug[20:70, 10:60, 1] == 17)
+        assert np.all(image_aug[20:70, 10:60, 2] == 17)
+
+    def test_no_channels_single_cval(self):
+        for per_channel in [False, True]:
+            with self.subTest(per_channel=per_channel):
+                image = np.mod(
+                    np.arange(100*100), 256
+                ).astype(np.uint8).reshape((100, 100))
+                image_cp = np.copy(image)
+
+                image_aug = arithmetic_lib._fill_rectangle_constant_(
+                    image,
+                    x1=10, y1=20, x2=60, y2=70,
+                    cval=17, per_channel=per_channel, random_state=None)
+
+                assert np.array_equal(image_aug[:20, :], image_cp[:20, :])
+                assert np.all(image_aug[20:70, 10:60] == 17)
+
+    def test_no_channels_iterable_cval(self):
+        for per_channel in [False, True]:
+            with self.subTest(per_channel=per_channel):
+                image = np.mod(
+                    np.arange(100*100), 256
+                ).astype(np.uint8).reshape((100, 100))
+                image_cp = np.copy(image)
+
+                image_aug = arithmetic_lib._fill_rectangle_constant_(
+                    image,
+                    x1=10, y1=20, x2=60, y2=70,
+                    cval=[17, 21, 25], per_channel=per_channel,
+                    random_state=None)
+
+                assert np.array_equal(image_aug[:20, :], image_cp[:20, :])
+                assert np.all(image_aug[20:70, 10:60] == 17)
+
+    def test_unusual_channel_numbers(self):
+        for nb_channels in [1, 2, 4, 5, 511, 512, 513]:
+            for per_channel in [False, True]:
+                with self.subTest(per_channel=per_channel):
+                    image = np.mod(
+                        np.arange(100*100*nb_channels), 256
+                    ).astype(np.uint8).reshape((100, 100, nb_channels))
+                    image_cp = np.copy(image)
+
+                    image_aug = arithmetic_lib._fill_rectangle_constant_(
+                        image,
+                        x1=10, y1=20, x2=60, y2=70,
+                        cval=[17, 21], per_channel=per_channel,
+                        random_state=None)
+
+                    assert np.array_equal(image_aug[:20, :], image_cp[:20, :])
+                    if per_channel:
+                        for c in np.arange(nb_channels):
+                            val = 17 if c % 2 == 0 else 21
+                            assert np.all(image_aug[20:70, 10:60, c] == val)
+                    else:
+                        assert np.all(image_aug[20:70, 10:60, :] == 17)
+
+    def test_other_dtypes_bool(self):
+        for per_channel in [False, True]:
+            with self.subTest(per_channel=per_channel):
+                image = np.array([0, 1], dtype=bool)
+                image = np.tile(image, (int(3*300*300/2),))
+                image = image.reshape((300, 300, 3))
+                image_cp = np.copy(image)
+
+                image_aug = arithmetic_lib._fill_rectangle_constant_(
+                    image,
+                    x1=10, y1=10, x2=300-10, y2=300-10,
+                    cval=[0, 1], per_channel=per_channel,
+                    random_state=None)
+
+                rect = image_aug[10:-10, 10:-10]
+                assert np.array_equal(image_aug[:10, :], image_cp[:10, :])
+                if per_channel:
+                    assert np.all(image_aug[10:-10, 10:-10, 0] == 0)
+                    assert np.all(image_aug[10:-10, 10:-10, 1] == 1)
+                    assert np.all(image_aug[10:-10, 10:-10, 2] == 0)
+                else:
+                    assert np.all(image_aug[20:70, 10:60] == 0)
+
+    def test_other_dtypes_uint_int(self):
+        dtypes = ["uint8", "uint16", "uint32", "uint64",
+                  "int8", "int16", "int32", "int64"]
+        for dtype in dtypes:
+            for per_channel in [False, True]:
+                min_value, center_value, max_value = \
+                    iadt.get_value_range_of_dtype(dtype)
+
+                with self.subTest(dtype=dtype, per_channel=per_channel):
+                    image = np.array([min_value, min_value+1,
+                                      int(center_value),
+                                      max_value-1, max_value], dtype=dtype)
+                    image = np.tile(image, (int(3*300*300/5),))
+                    image = image.reshape((300, 300, 3))
+                    assert min_value in image
+                    assert max_value in image
+                    image_cp = np.copy(image)
+
+                    image_aug = arithmetic_lib._fill_rectangle_constant_(
+                        image,
+                        x1=10, y1=10, x2=300-10, y2=300-10,
+                        cval=[min_value, 10, max_value],
+                        per_channel=per_channel,
+                        random_state=None)
+
+                    assert np.array_equal(image_aug[:10, :], image_cp[:10, :])
+                    if per_channel:
+                        assert np.all(image_aug[10:-10, 10:-10, 0]
+                                      == min_value)
+                        assert np.all(image_aug[10:-10, 10:-10, 1]
+                                      == 10)
+                        assert np.all(image_aug[10:-10, 10:-10, 2]
+                                      == max_value)
+                    else:
+                        assert np.all(image_aug[-10:-10, 10:-10] == min_value)
+
+    def test_other_dtypes_float(self):
+        dtypes = ["float16", "float32", "float64", "float128"]
+        for dtype in dtypes:
+            for per_channel in [False, True]:
+                min_value, center_value, max_value = \
+                    iadt.get_value_range_of_dtype(dtype)
+
+                with self.subTest(dtype=dtype, per_channel=per_channel):
+                    image = np.array([min_value, min_value+1,
+                                      int(center_value),
+                                      max_value-1, max_value], dtype=dtype)
+                    image = np.tile(image, (int(3*300*300/5),))
+                    image = image.reshape((300, 300, 3))
+
+                    # Use this here instead of any(isclose(...)) because
+                    # the latter one leads to overflow warnings.
+                    assert image.flat[0] <= np.float128(min_value) + 1.0
+                    assert image.flat[4] >= np.float128(max_value) - 1.0
+
+                    image_cp = np.copy(image)
+
+                    image_aug = arithmetic_lib._fill_rectangle_constant_(
+                        image,
+                        x1=10, y1=10, x2=300-10, y2=300-10,
+                        cval=[min_value, 10, max_value],
+                        per_channel=per_channel,
+                        random_state=None)
+
+                    assert image_aug.dtype.name == dtype
+                    assert np.allclose(image_aug[:10, :], image_cp[:10, :],
+                                       rtol=0, atol=1e-4)
+                    if per_channel:
+                        assert np.allclose(image_aug[10:-10, 10:-10, 0],
+                                           np.float128(min_value),
+                                           rtol=0, atol=1e-4)
+                        assert np.allclose(image_aug[10:-10, 10:-10, 1],
+                                           np.float128(10),
+                                           rtol=0, atol=1e-4)
+                        assert np.allclose(image_aug[10:-10, 10:-10, 2],
+                                           np.float128(max_value),
+                                           rtol=0, atol=1e-4)
+                    else:
+                        assert np.allclose(image_aug[-10:-10, 10:-10],
+                                           np.float128(min_value),
+                                           rtol=0, atol=1e-4)
 
 
 class TestAdd(unittest.TestCase):
