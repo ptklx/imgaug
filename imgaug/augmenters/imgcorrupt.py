@@ -5,13 +5,31 @@ See https://github.com/bethgelab/imagecorruptions for the package.
 
 List of augmenters:
 
-    TODO
+    * ImgcorruptGaussianNoise
+    * ImgcorruptShotNoise
+    * ImgcorruptImpulseNoise
+    * ImgcorruptSpeckleNoise
+    * ImgcorruptGaussianBlur
+    * ImgcorruptGlassBlur
+    * ImgcorruptDefocusBlur
+    * ImgcorruptMotionBlur
+    * ImgcorruptZoomBlur
+    * ImgcorruptFog
+    * ImgcorruptFrost
+    * ImgcorruptSnow
+    * ImgcorruptSpatter
+    * ImgcorruptContrast
+    * ImgcorruptBrightness
+    * ImgcorruptSaturate
+    * ImgcorruptJpegCompression
+    * ImgcorruptPixelate
+    * ImgcorruptElasticTransform
 
 .. note::
 
-    The functions provided here are similar in inputs and outputs
-    to the ones in ``imagecorruptions`` when called using the ``corrupt()``
-    function of that package. E.g. the outputs are always ``uint8`` and not
+    The functions provided here have identical outputs to the ones in
+    ``imagecorruptions`` when called using the ``corrupt()`` function of
+    that package. E.g. the outputs are always ``uint8`` and not
     ``float32`` or ``float64``.
 
 Example usage::
@@ -35,9 +53,10 @@ import numpy as np
 
 from .. import dtypes as iadt
 from .. import random as iarandom
+from .. import parameters as iap
+from . import meta
 
 # TODO add optional dependency
-# TODO add augmenters
 
 _MISSING_PACKAGE_ERROR_MSG = (
     "Could not import package `imagecorruptions`. This is an optional "
@@ -91,6 +110,89 @@ def _create_docstring(fname, image_arg_name="x"):
         Corrupted image.
 
     """ % (fname, image_arg_name)
+
+
+class _ImgcorruptAugmenterBase(meta.Augmenter):
+    def __init__(self, func, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(_ImgcorruptAugmenterBase, self).__init__(
+            name=name, deterministic=deterministic, random_state=random_state)
+
+        self.func = func
+        self.severity = iap.handle_discrete_param(
+            severity, "severity", value_range=(1, 5), tuple_to_uniform=True,
+            list_to_choice=True, allow_floats=False)
+
+    def _augment_batch(self, batch, random_state, parents, hooks):
+        if batch.images is None:
+            return batch
+
+        severities, seeds = self._draw_samples(len(batch.images),
+                                               random_state=random_state)
+
+        for image, severity, seed in zip(batch.images, severities, seeds):
+            image[...] = self.func(image, severity=severity, seed=seed)
+
+        return batch
+
+    def _draw_samples(self, nb_rows, random_state):
+        severities = self.severity.draw_samples((nb_rows,),
+                                                random_state=random_state)
+        seeds = random_state.generate_seeds_(nb_rows)
+
+        return severities, seeds
+
+    def get_parameters(self):
+        """See :func:`imgaug.augmenters.meta.Augmenter.get_parameters`."""
+        return [self.severity]
+
+
+def _create_augmenter(class_name, func_name):
+    func = globals()["apply_imgcorrupt_%s" % (func_name,)]
+
+    def __init__(self, severity=1, name=None, deterministic=False,
+                 random_state=None):
+        super(self.__class__, self).__init__(
+            func, severity, name=name, deterministic=deterministic,
+            random_state=random_state)
+
+    augmenter_class = type(class_name,
+                           (_ImgcorruptAugmenterBase,),
+                           {"__init__": __init__})
+
+    augmenter_class.__doc__ = """
+    Wrapper around function :func:`imagecorruption.%s`.
+    
+    dtype support::
+    
+        See :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_%s`.
+    
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+    
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.bit_generator.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+    
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.%s(severity=2)
+    
+    Create an augmenter around :func:`imagecorruption.%s`. Apply it to
+    images using e.g. ``aug(images=[image1, image2, ...])``.
+    
+    """ % (func_name, func_name, class_name, func_name)
+
+    return augmenter_class
 
 
 def _clipped_zoom_no_scipy_warning(img, zoom_factor):
@@ -336,3 +438,42 @@ def apply_imgcorrupt_elastic_transform(image, severity=1, seed=None):
 apply_imgcorrupt_elastic_transform.__doc__ = _create_docstring(
     "elastic_transform")
 
+
+ImgcorruptGaussianNoise = _create_augmenter("ImgcorruptGaussianNoise",
+                                            "gaussian_noise")
+ImgcorruptShotNoise = _create_augmenter("ImgcorruptShotNoise",
+                                        "shot_noise")
+ImgcorruptImpulseNoise = _create_augmenter("ImgcorruptImpulseNoise",
+                                           "impulse_noise")
+ImgcorruptSpeckleNoise = _create_augmenter("ImgcorruptSpeckleNoise",
+                                           "speckle_noise")
+ImgcorruptGaussianBlur = _create_augmenter("ImgcorruptGaussianBlur",
+                                           "gaussian_blur")
+ImgcorruptGlassBlur = _create_augmenter("ImgcorruptGlassBlur",
+                                        "glass_blur")
+ImgcorruptDefocusBlur = _create_augmenter("ImgcorruptDefocusBlur",
+                                          "defocus_blur")
+ImgcorruptMotionBlur = _create_augmenter("ImgcorruptMotionBlur",
+                                         "motion_blur")
+ImgcorruptZoomBlur = _create_augmenter("ImgcorruptZoomBlur",
+                                       "zoom_blur")
+ImgcorruptFog = _create_augmenter("ImgcorruptFog",
+                                  "fog")
+ImgcorruptFrost = _create_augmenter("ImgcorruptFrost",
+                                    "frost")
+ImgcorruptSnow = _create_augmenter("ImgcorruptSnow",
+                                   "snow")
+ImgcorruptSpatter = _create_augmenter("ImgcorruptSpatter",
+                                      "spatter")
+ImgcorruptContrast = _create_augmenter("ImgcorruptContrast",
+                                       "contrast")
+ImgcorruptBrightness = _create_augmenter("ImgcorruptBrightness",
+                                         "brightness")
+ImgcorruptSaturate = _create_augmenter("ImgcorruptSaturate",
+                                       "saturate")
+ImgcorruptJpegCompression = _create_augmenter("ImgcorruptJpegCompression",
+                                              "jpeg_compression")
+ImgcorruptPixelate = _create_augmenter("ImgcorruptPixelate",
+                                       "pixelate")
+ImgcorruptElasticTransform = _create_augmenter("ImgcorruptElasticTransform",
+                                               "elastic_transform")
