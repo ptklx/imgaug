@@ -68,133 +68,6 @@ _MISSING_PACKAGE_ERROR_MSG = (
 )
 
 
-def _create_docstring(fname, image_arg_name="x"):
-    return """Apply :func:`imagecorruptions.corruptions.%s`.
-
-    dtype support::
-
-        * ``uint8``: yes; indirectly tested (1)
-        * ``uint16``: no
-        * ``uint32``: no
-        * ``uint64``: no
-        * ``int8``: no
-        * ``int16``: no
-        * ``int32``: no
-        * ``int64``: no
-        * ``float16``: no
-        * ``float32``: no
-        * ``float64``: no
-        * ``float128``: no
-        * ``bool``: no
-        
-        - (1) Tested by comparison with function in ``imagecorruptions``
-              package.
-
-    Parameters
-    ----------
-    %s : ndarray
-        Image array.
-        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
-        dtype ``uint8`` and a minimum height/width of ``32``.
-
-    severity : int, optional
-        Strength of the corruption, with valid values being
-        ``1 <= severity <= 5``.
-
-    seed : None or int, optional
-        Seed for the random number generation to use.
-
-    Returns
-    -------
-    ndarray
-        Corrupted image.
-
-    """ % (fname, image_arg_name)
-
-
-class _ImgcorruptAugmenterBase(meta.Augmenter):
-    def __init__(self, func, severity=1,
-                 name=None, deterministic=False, random_state=None):
-        super(_ImgcorruptAugmenterBase, self).__init__(
-            name=name, deterministic=deterministic, random_state=random_state)
-
-        self.func = func
-        self.severity = iap.handle_discrete_param(
-            severity, "severity", value_range=(1, 5), tuple_to_uniform=True,
-            list_to_choice=True, allow_floats=False)
-
-    def _augment_batch(self, batch, random_state, parents, hooks):
-        if batch.images is None:
-            return batch
-
-        severities, seeds = self._draw_samples(len(batch.images),
-                                               random_state=random_state)
-
-        for image, severity, seed in zip(batch.images, severities, seeds):
-            image[...] = self.func(image, severity=severity, seed=seed)
-
-        return batch
-
-    def _draw_samples(self, nb_rows, random_state):
-        severities = self.severity.draw_samples((nb_rows,),
-                                                random_state=random_state)
-        seeds = random_state.generate_seeds_(nb_rows)
-
-        return severities, seeds
-
-    def get_parameters(self):
-        """See :func:`imgaug.augmenters.meta.Augmenter.get_parameters`."""
-        return [self.severity]
-
-
-def _create_augmenter(class_name, func_name):
-    func = globals()["apply_imgcorrupt_%s" % (func_name,)]
-
-    def __init__(self, severity=1, name=None, deterministic=False,
-                 random_state=None):
-        super(self.__class__, self).__init__(
-            func, severity, name=name, deterministic=deterministic,
-            random_state=random_state)
-
-    augmenter_class = type(class_name,
-                           (_ImgcorruptAugmenterBase,),
-                           {"__init__": __init__})
-
-    augmenter_class.__doc__ = """
-    Wrapper around function :func:`imagecorruption.%s`.
-    
-    dtype support::
-    
-        See :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_%s`.
-    
-    Parameters
-    ----------
-    severity : int, optional
-        Strength of the corruption, with valid values being
-        ``1 <= severity <= 5``.
-    
-    name : None or str, optional
-        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
-
-    deterministic : bool, optional
-        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
-
-    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.bit_generator.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
-        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
-    
-    Examples
-    --------
-    >>> import imgaug.augmenters as iaa
-    >>> aug = iaa.%s(severity=2)
-    
-    Create an augmenter around :func:`imagecorruption.%s`. Apply it to
-    images using e.g. ``aug(images=[image1, image2, ...])``.
-    
-    """ % (func_name, func_name, class_name, func_name)
-
-    return augmenter_class
-
-
 def _clipped_zoom_no_scipy_warning(img, zoom_factor):
     from scipy.ndimage import zoom as scizoom
 
@@ -216,6 +89,31 @@ def _clipped_zoom_no_scipy_warning(img, zoom_factor):
 
 
 def _call_imgcorrupt_func(fname, seed, convert_to_pil, *args, **kwargs):
+    """Apply an ``imagecorruptions`` function.
+
+    The dtype support below is basically a placeholder to which the
+    augmentation functions can point to decrease the amount of documentation.
+
+    dtype support::
+
+        * ``uint8``: yes; indirectly tested (1)
+        * ``uint16``: no
+        * ``uint32``: no
+        * ``uint64``: no
+        * ``int8``: no
+        * ``int16``: no
+        * ``int32``: no
+        * ``int64``: no
+        * ``float16``: no
+        * ``float32``: no
+        * ``float64``: no
+        * ``float128``: no
+        * ``bool``: no
+
+        - (1) Tested by comparison with function in ``imagecorruptions``
+              package.
+
+    """
     # import imagecorruptions, note that it is an optional dependency
     try:
         # imagecorruptions sets its own warnings filter rule via
@@ -322,158 +220,1535 @@ def get_imgcorrupt_subset(subset="common"):
     return cnames, funcs
 
 
-def apply_imgcorrupt_gaussian_noise(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("gaussian_noise", seed, False, x, severity)
+# ----------------------------------------------------------------------------
+# Corruption functions
+# ----------------------------------------------------------------------------
+# These functions could easily be created dynamically, especially templating
+# the docstrings would save many lines of code. It is intentionally not done
+# here for the same reasons as in case of the augmenters. See the comment
+# further below at the start of the augmenter section for details.
 
-apply_imgcorrupt_gaussian_noise.__doc__ = _create_docstring("gaussian_noise")
+def apply_imgcorrupt_gaussian_noise(x, severity=1, seed=None):
+    """Apply ``gaussian_noise`` from ``imagecorruptions``.
+
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("gaussian_noise", seed, False, x, severity)
 
 
 def apply_imgcorrupt_shot_noise(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("shot_noise", seed, False, x, severity)
+    """Apply ``shot_noise`` from ``imagecorruptions``.
 
-apply_imgcorrupt_shot_noise.__doc__ = _create_docstring("shot_noise")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("shot_noise", seed, False, x, severity)
 
 
 def apply_imgcorrupt_impulse_noise(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("impulse_noise", seed, False, x, severity)
+    """Apply ``impulse_noise`` from ``imagecorruptions``.
 
-apply_imgcorrupt_impulse_noise.__doc__ = _create_docstring("impulse_noise")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("impulse_noise", seed, False, x, severity)
 
 
 def apply_imgcorrupt_speckle_noise(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("speckle_noise", seed, False, x, severity)
+    """Apply ``speckle_noise`` from ``imagecorruptions``.
 
-apply_imgcorrupt_speckle_noise.__doc__ = _create_docstring("speckle_noise")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("speckle_noise", seed, False, x, severity)
 
 
 def apply_imgcorrupt_gaussian_blur(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("gaussian_blur", seed, False, x, severity)
+    """Apply ``gaussian_blur`` from ``imagecorruptions``.
 
-apply_imgcorrupt_gaussian_blur.__doc__ = _create_docstring("gaussian_blur")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("gaussian_blur", seed, False, x, severity)
 
 
 def apply_imgcorrupt_glass_blur(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("glass_blur", seed, False, x, severity)
+    """Apply ``glass_blur`` from ``imagecorruptions``.
 
-apply_imgcorrupt_glass_blur.__doc__ = _create_docstring("glass_blur")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("glass_blur", seed, False, x, severity)
 
 
 def apply_imgcorrupt_defocus_blur(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("defocus_blur", seed, False, x, severity)
+    """Apply ``defocus_blur`` from ``imagecorruptions``.
 
-apply_imgcorrupt_defocus_blur.__doc__ = _create_docstring("defocus_blur")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("defocus_blur", seed, False, x, severity)
 
 
 def apply_imgcorrupt_motion_blur(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("motion_blur", seed, False, x, severity)
+    """Apply ``motion_blur`` from ``imagecorruptions``.
 
-apply_imgcorrupt_motion_blur.__doc__ = _create_docstring("motion_blur")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("motion_blur", seed, False, x, severity)
 
 
 def apply_imgcorrupt_zoom_blur(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("zoom_blur", seed, False, x, severity)
+    """Apply ``zoom_blur`` from ``imagecorruptions``.
 
-apply_imgcorrupt_zoom_blur.__doc__ = _create_docstring("zoom_blur")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("zoom_blur", seed, False, x, severity)
 
 
 def apply_imgcorrupt_fog(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("fog", seed, False, x, severity)
+    """Apply ``fog`` from ``imagecorruptions``.
 
-apply_imgcorrupt_fog.__doc__ = _create_docstring("fog")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("fog", seed, False, x, severity)
 
 
 def apply_imgcorrupt_frost(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("frost", seed, False, x, severity)
+    """Apply ``frost`` from ``imagecorruptions``.
 
-apply_imgcorrupt_frost.__doc__ = _create_docstring("frost")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("frost", seed, False, x, severity)
 
 
 def apply_imgcorrupt_snow(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("snow", seed, False, x, severity)
+    """Apply ``snow`` from ``imagecorruptions``.
 
-apply_imgcorrupt_snow.__doc__ = _create_docstring("snow")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("snow", seed, False, x, severity)
 
 
 def apply_imgcorrupt_spatter(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("spatter", seed, True, x, severity)
+    """Apply ``spatter`` from ``imagecorruptions``.
 
-apply_imgcorrupt_spatter.__doc__ = _create_docstring("spatter")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("spatter", seed, True, x, severity)
 
 
 def apply_imgcorrupt_contrast(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("contrast", seed, False, x, severity)
+    """Apply ``contrast`` from ``imagecorruptions``.
 
-apply_imgcorrupt_contrast.__doc__ = _create_docstring("contrast")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("contrast", seed, False, x, severity)
 
 
 def apply_imgcorrupt_brightness(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("brightness", seed, False, x, severity)
+    """Apply ``brightness`` from ``imagecorruptions``.
 
-apply_imgcorrupt_brightness.__doc__ = _create_docstring("brightness")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("brightness", seed, False, x, severity)
 
 
 def apply_imgcorrupt_saturate(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("saturate", seed, False, x, severity)
+    """Apply ``saturate`` from ``imagecorruptions``.
 
-apply_imgcorrupt_saturate.__doc__ = _create_docstring("saturate")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("saturate", seed, False, x, severity)
 
 
 def apply_imgcorrupt_jpeg_compression(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("jpeg_compression", seed, True, x, severity)
+    """Apply ``jpeg_compression`` from ``imagecorruptions``.
 
-apply_imgcorrupt_jpeg_compression.__doc__ = _create_docstring(
-    "jpeg_compression")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("jpeg_compression", seed, True, x, severity)
 
 
 def apply_imgcorrupt_pixelate(x, severity=1, seed=None):
-    return _call_imgcorrupt_func("pixelate", seed, True, x, severity)
+    """Apply ``pixelate`` from ``imagecorruptions``.
 
-apply_imgcorrupt_pixelate.__doc__ = _create_docstring("pixelate")
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
+    return _call_imgcorrupt_func("pixelate", seed, True, x, severity)
 
 
 def apply_imgcorrupt_elastic_transform(image, severity=1, seed=None):
+    """Apply ``elastic_transform`` from ``imagecorruptions``.
+
+    dtype support::
+
+        See :func:`imgaug.augmenters.imgcorrupt._call_imgcorrupt_func`.
+
+    Parameters
+    ----------
+    image : ndarray
+        Image array.
+        Expected to have shape ``(H,W)``, ``(H,W,1)`` or ``(H,W,3)`` with
+        dtype ``uint8`` and a minimum height/width of ``32``.
+
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    seed : None or int, optional
+        Seed for the random number generation to use.
+
+    Returns
+    -------
+    ndarray
+        Corrupted image.
+
+    """
     return _call_imgcorrupt_func("elastic_transform", seed, False, image,
                                  severity)
 
-apply_imgcorrupt_elastic_transform.__doc__ = _create_docstring(
-    "elastic_transform")
+
+# ----------------------------------------------------------------------------
+# Augmenters
+# ----------------------------------------------------------------------------
+# The augmenter definitions below are almost identical and mainly differ in
+# the names and functions used. It would be fairly trivial to write a
+# function that would create these augmenters dynamically (and one is listed
+# below as a comment). The downside is that in these cases the documentation
+# would also be generated dynamically, which leads to numerous problems:
+# (1) users couldn't easily read the documentation while scrolling through
+# the code file, (2) IDEs might not be able to use it for code suggestions,
+# (3) tools like pylint can't detect and validate it, (4) the imgaug-doc
+# tools to parse dtype support don't work with dynamically generated
+# documentation (and neither with dynamically generated classes).
+# Even though it's by far more code, it seems like the better choice overall
+# to just write it out.
+
+# Example function to dynamically generate augmenters, kept for possible
+# future uses:
+# def _create_augmenter(class_name, func_name):
+#     func = globals()["apply_imgcorrupt_%s" % (func_name,)]
+#
+#     def __init__(self, severity=1, name=None, deterministic=False,
+#                  random_state=None):
+#         super(self.__class__, self).__init__(
+#             func, severity, name=name, deterministic=deterministic,
+#             random_state=random_state)
+#
+#     augmenter_class = type(class_name,
+#                            (_ImgcorruptAugmenterBase,),
+#                            {"__init__": __init__})
+#
+#     augmenter_class.__doc__ = """
+#     Wrapper around function :func:`imagecorruption.%s`.
+#
+#     dtype support::
+#
+#         See :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_%s`.
+#
+#     Parameters
+#     ----------
+#     severity : int, optional
+#         Strength of the corruption, with valid values being
+#         ``1 <= severity <= 5``.
+#
+#     name : None or str, optional
+#         See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+#
+#     deterministic : bool, optional
+#         See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+#
+#     random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+#         See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+#
+#     Examples
+#     --------
+#     >>> import imgaug.augmenters as iaa
+#     >>> aug = iaa.%s(severity=2)
+#
+#     Create an augmenter around :func:`imagecorruption.%s`. Apply it to
+#     images using e.g. ``aug(images=[image1, image2, ...])``.
+#
+#     """ % (func_name, func_name, class_name, func_name)
+#
+#     return augmenter_class
 
 
-ImgcorruptGaussianNoise = _create_augmenter("ImgcorruptGaussianNoise",
-                                            "gaussian_noise")
-ImgcorruptShotNoise = _create_augmenter("ImgcorruptShotNoise",
-                                        "shot_noise")
-ImgcorruptImpulseNoise = _create_augmenter("ImgcorruptImpulseNoise",
-                                           "impulse_noise")
-ImgcorruptSpeckleNoise = _create_augmenter("ImgcorruptSpeckleNoise",
-                                           "speckle_noise")
-ImgcorruptGaussianBlur = _create_augmenter("ImgcorruptGaussianBlur",
-                                           "gaussian_blur")
-ImgcorruptGlassBlur = _create_augmenter("ImgcorruptGlassBlur",
-                                        "glass_blur")
-ImgcorruptDefocusBlur = _create_augmenter("ImgcorruptDefocusBlur",
-                                          "defocus_blur")
-ImgcorruptMotionBlur = _create_augmenter("ImgcorruptMotionBlur",
-                                         "motion_blur")
-ImgcorruptZoomBlur = _create_augmenter("ImgcorruptZoomBlur",
-                                       "zoom_blur")
-ImgcorruptFog = _create_augmenter("ImgcorruptFog",
-                                  "fog")
-ImgcorruptFrost = _create_augmenter("ImgcorruptFrost",
-                                    "frost")
-ImgcorruptSnow = _create_augmenter("ImgcorruptSnow",
-                                   "snow")
-ImgcorruptSpatter = _create_augmenter("ImgcorruptSpatter",
-                                      "spatter")
-ImgcorruptContrast = _create_augmenter("ImgcorruptContrast",
-                                       "contrast")
-ImgcorruptBrightness = _create_augmenter("ImgcorruptBrightness",
-                                         "brightness")
-ImgcorruptSaturate = _create_augmenter("ImgcorruptSaturate",
-                                       "saturate")
-ImgcorruptJpegCompression = _create_augmenter("ImgcorruptJpegCompression",
-                                              "jpeg_compression")
-ImgcorruptPixelate = _create_augmenter("ImgcorruptPixelate",
-                                       "pixelate")
-ImgcorruptElasticTransform = _create_augmenter("ImgcorruptElasticTransform",
-                                               "elastic_transform")
+class _ImgcorruptAugmenterBase(meta.Augmenter):
+    def __init__(self, func, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(_ImgcorruptAugmenterBase, self).__init__(
+            name=name, deterministic=deterministic, random_state=random_state)
+
+        self.func = func
+        self.severity = iap.handle_discrete_param(
+            severity, "severity", value_range=(1, 5), tuple_to_uniform=True,
+            list_to_choice=True, allow_floats=False)
+
+    def _augment_batch(self, batch, random_state, parents, hooks):
+        if batch.images is None:
+            return batch
+
+        severities, seeds = self._draw_samples(len(batch.images),
+                                               random_state=random_state)
+
+        for image, severity, seed in zip(batch.images, severities, seeds):
+            image[...] = self.func(image, severity=severity, seed=seed)
+
+        return batch
+
+    def _draw_samples(self, nb_rows, random_state):
+        severities = self.severity.draw_samples((nb_rows,),
+                                                random_state=random_state)
+        seeds = random_state.generate_seeds_(nb_rows)
+
+        return severities, seeds
+
+    def get_parameters(self):
+        """See :func:`imgaug.augmenters.meta.Augmenter.get_parameters`."""
+        return [self.severity]
+
+
+class ImgcorruptGaussianNoise(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.gaussian_noise`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_gaussian_noise`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptGaussianNoise(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.gaussian_noise`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptGaussianNoise, self).__init__(
+            apply_imgcorrupt_gaussian_noise, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptShotNoise(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.shot_noise`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_shot_noise`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptShotNoise(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.shot_noise`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptShotNoise, self).__init__(
+            apply_imgcorrupt_shot_noise, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+class ImgcorruptImpulseNoise(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.impulse_noise`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_impulse_noise`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptImpulseNoise(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.impulse_noise`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptImpulseNoise, self).__init__(
+            apply_imgcorrupt_impulse_noise, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptSpeckleNoise(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.speckle_noise`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_speckle_noise`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptSpeckleNoise(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.speckle_noise`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptSpeckleNoise, self).__init__(
+            apply_imgcorrupt_speckle_noise, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptGaussianBlur(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.gaussian_blur`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_gaussian_blur`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptGaussianBlur(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.gaussian_blur`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptGaussianBlur, self).__init__(
+            apply_imgcorrupt_gaussian_blur, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptGlassBlur(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.glass_blur`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_glass_blur`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptGlassBlur(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.glass_blur`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptGlassBlur, self).__init__(
+            apply_imgcorrupt_glass_blur, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptDefocusBlur(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.defocus_blur`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_defocus_blur`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptDefocusBlur(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.defocus_blur`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptDefocusBlur, self).__init__(
+            apply_imgcorrupt_defocus_blur, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptMotionBlur(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.motion_blur`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_motion_blur`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptMotionBlur(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.motion_blur`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptMotionBlur, self).__init__(
+            apply_imgcorrupt_motion_blur, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptZoomBlur(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.zoom_blur`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_zoom_blur`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptZoomBlur(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.zoom_blur`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptZoomBlur, self).__init__(
+            apply_imgcorrupt_zoom_blur, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptFog(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.fog`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_fog`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptFog(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.fog`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptFog, self).__init__(
+            apply_imgcorrupt_fog, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptFrost(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.frost`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_frost`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptFrost(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.frost`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptFrost, self).__init__(
+            apply_imgcorrupt_frost, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptSnow(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.snow`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_snow`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptSnow(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.snow`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptSnow, self).__init__(
+            apply_imgcorrupt_snow, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptSpatter(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.spatter`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_spatter`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptSpatter(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.spatter`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptSpatter, self).__init__(
+            apply_imgcorrupt_spatter, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptContrast(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.contrast`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_contrast`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptContrast(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.contrast`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptContrast, self).__init__(
+            apply_imgcorrupt_contrast, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptBrightness(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.brightness`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_brightness`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptBrightness(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.brightness`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptBrightness, self).__init__(
+            apply_imgcorrupt_brightness, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptSaturate(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.saturate`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_saturate`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptSaturate(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.saturate`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptSaturate, self).__init__(
+            apply_imgcorrupt_saturate, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptJpegCompression(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.jpeg_compression`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_jpeg_compression`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptJpegCompression(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.jpeg_compression`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptJpegCompression, self).__init__(
+            apply_imgcorrupt_jpeg_compression, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptPixelate(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.pixelate`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_pixelate`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptPixelate(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.pixelate`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptPixelate, self).__init__(
+            apply_imgcorrupt_pixelate, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+class ImgcorruptElasticTransform(_ImgcorruptAugmenterBase):
+    """
+    Wrapper around function :func:`imagecorruption.elastic_transform`.
+
+    .. note ::
+
+        This augmenter only affects images. Other data is not changed.
+
+    dtype support::
+
+        See
+        :func:`imgaug.augmenters.imgcorrupt.apply_imgcorrupt_elastic_transform`.
+
+    Parameters
+    ----------
+    severity : int, optional
+        Strength of the corruption, with valid values being
+        ``1 <= severity <= 5``.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.ImgcorruptElasticTransform(severity=2)
+
+    Create an augmenter around :func:`imagecorruption.elastic_transform`.
+    Apply it to images using e.g. ``aug(images=[image1, image2, ...])``.
+
+    """
+
+    def __init__(self, severity=1,
+                 name=None, deterministic=False, random_state=None):
+        super(ImgcorruptElasticTransform, self).__init__(
+            apply_imgcorrupt_elastic_transform, severity,
+            name=name, deterministic=deterministic, random_state=random_state)
