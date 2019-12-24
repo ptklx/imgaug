@@ -32,6 +32,7 @@ List of augmenters:
     * Pepper
     * CoarsePepper
     * Invert
+    * Solarize
     * ContrastNormalization
     * JpegCompression
 

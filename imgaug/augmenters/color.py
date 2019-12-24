@@ -34,6 +34,7 @@ List of augmenters:
     * GrayscaleColorwise
     * KMeansColorQuantization
     * UniformColorQuantization
+    * Posterize
 
 """
 from __future__ import print_function, division, absolute_import
@@ -3956,7 +3957,13 @@ class UniformColorQuantizationToNBits(_AbstractColorQuantization):
 
 
 class Posterize(UniformColorQuantizationToNBits):
-    """Alias for :class:`UniformColorQuantizationToNBits`."""
+    """Alias for :class:`UniformColorQuantizationToNBits`.
+
+    dtype support::
+
+        See :class:`imgaug.augmenters.color.UniformColorQuantizationToNBits`.
+
+    """
 
 
 @ia.deprecated("imgaug.augmenters.colors.quantize_uniform")
