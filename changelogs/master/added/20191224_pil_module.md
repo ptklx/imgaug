@@ -10,6 +10,8 @@
   * `imgaug.augmenters.pil.pil_autocontrast_`.
   * `imgaug.augmenters.pil.pil_solarize`
   * `imgaug.augmenters.pil.pil_solarize_`
+  * `imgaug.augmenters.pil.pil_posterize`.
+  * `imgaug.augmenters.pil.pil_posterize_`.
 * Added the following augmenters to the module:
   * `imgaug.augmenters.pil.PILSolarize`.
   * `imgaug.augmenters.pil.PILPosterize`.

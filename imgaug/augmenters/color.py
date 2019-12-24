@@ -4238,6 +4238,10 @@ def posterize(arr, nb_bits):
     This function is an alias for :func:`quantize_uniform_to_n_bits` and was
     added for users familiar with the same function in PIL.
 
+    dtype support::
+
+        See :func:`imgaug.augmenters.color.quantize_uniform_to_n_bits`.
+
     Parameters
     ----------
     arr : ndarray

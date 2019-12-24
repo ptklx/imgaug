@@ -44,6 +44,7 @@ def pil_solarize_(image, threshold=128):
     """Invert all array components above a threshold in-place.
 
     This function has identical outputs to :func:`PIL.ImageOps.solarize`.
+    It does however work in-place.
 
     dtype support::
 
@@ -62,8 +63,8 @@ def pil_solarize_(image, threshold=128):
     Returns
     -------
     ndarray
-        Inverted image. This *can* be the same array as input in `image`,
-        modified in-place.
+        Inverted image.
+        This *can* be the same array as input in `image`, modified in-place.
 
     """
     return arithmetic.invert_(image, threshold=threshold)
@@ -94,6 +95,62 @@ def pil_solarize(image, threshold=128):
 
     """
     return arithmetic.invert(image, threshold=threshold)
+
+
+def pil_posterize_(image, bits):
+    """Reduce the number of bits for each color channel in-place.
+
+    This function has identical outputs to :func:`PIL.ImageOps.posterize`.
+    It does however work in-place.
+
+    dtype support::
+
+        See :func:`imgaug.augmenters.color.quantize_uniform_to_n_bits_.
+
+    Parameters
+    ----------
+    image : ndarray
+        Image array of shape ``(H,W,[C])``.
+
+    bits : int
+        The number of bits to keep per component.
+        Values in the interval ``[1, 8]`` are valid.
+
+    Returns
+    -------
+    ndarray
+        Posterized image.
+        This *can* be the same array as input in `image`, modified in-place.
+
+    """
+    return color.posterize(image, bits)
+
+
+def pil_posterize(image, bits):
+    """Reduce the number of bits for each color channel.
+
+    This function has identical outputs to :func:`PIL.ImageOps.posterize`.
+
+    dtype support::
+
+        See :func:`imgaug.augmenters.color.quantize_uniform_to_n_bits`.
+
+    Parameters
+    ----------
+    image : ndarray
+        Image array of shape ``(H,W,[C])``.
+
+    bits : int
+        The number of bits to keep per component.
+        Values in the interval ``[1, 8]`` are valid.
+
+    Returns
+    -------
+    ndarray
+        Posterized image.
+
+    """
+    return color.posterize(image, bits)
 
 
 def pil_equalize(image, mask=None):
@@ -138,9 +195,8 @@ def pil_equalize_(image, mask=None):
     This function applies a non-linear mapping to the input image, in order
     to create a uniform distribution of grayscale values in the output image.
 
-    This function is identical in inputs and outputs to
-    :func:`PIL.ImageOps.equalize`, except that it is allowed to modify the
-    input image in-place.
+    This function has identical outputs to :func:`PIL.ImageOps.equalize`.
+    It does however work in-place.
 
     dtype support::
 
@@ -253,8 +309,8 @@ def pil_autocontrast(image, cutoff=0, ignore=None):
     and remaps the image so that the darkest pixel becomes black (``0``), and
     the lightest becomes white (``255``).
 
-    This function has identical inputs and outputs to
-    :func:`PIL.ImageOps.autocontrast`. The speed almost identical.
+    This function has identical outputs to :func:`PIL.ImageOps.autocontrast`.
+    The speed is almost identical.
 
     dtype support::
 

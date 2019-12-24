@@ -86,6 +86,22 @@ class Test_pil_solarize(unittest.TestCase):
                     assert np.array_equal(image_pil, image_iaa)
 
 
+class Test_pil_posterize(unittest.TestCase):
+    def test_by_comparison_with_pil(self):
+        image = np.arange(64*64*3).reshape((64, 64, 3))
+        image = np.mod(image, 255).astype(np.uint8)
+        for nb_bits in [1, 2, 3, 4, 5, 6, 7, 8]:
+            image_iaa = iaa.pil_posterize(np.copy(image), nb_bits)
+            image_pil = np.asarray(
+                PIL.ImageOps.posterize(
+                    PIL.Image.fromarray(image),
+                    nb_bits
+                )
+            )
+
+            assert np.array_equal(image_iaa, image_pil)
+
+
 class Test_pil_equalize(unittest.TestCase):
     def test_by_comparison_with_pil(self):
         shapes = [
