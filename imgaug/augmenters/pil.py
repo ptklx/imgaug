@@ -40,6 +40,62 @@ from .. import parameters as iap
 _EQUALIZE_USE_PIL_BELOW = 64*64  # H*W
 
 
+def pil_solarize_(image, threshold=128):
+    """Invert all array components above a threshold in-place.
+
+    This function has identical outputs to :func:`PIL.ImageOps.solarize`.
+
+    dtype support::
+
+        See :func:`imgaug.augmenters.arithmetic.invert_(min_value=None and max_value=None)`.
+
+    Parameters
+    ----------
+    image : ndarray
+        Image array of shape ``(H,W,[C])``.
+        The array *might* be modified in-place.
+
+    threshold : int, optional
+        A threshold to use in order to invert only numbers above or below
+        the threshold.
+
+    Returns
+    -------
+    ndarray
+        Inverted image. This *can* be the same array as input in `image`,
+        modified in-place.
+
+    """
+    return arithmetic.invert_(image, threshold=threshold)
+
+
+def pil_solarize(image, threshold=128):
+    """Invert all array components above a threshold.
+
+    This function has identical outputs to :func:`PIL.ImageOps.solarize`.
+
+    dtype support::
+
+        See :func:`imgaug.augmenters.arithmetic.invert_(min_value=None and max_value=None)`.
+
+    Parameters
+    ----------
+    image : ndarray
+        Image array of shape ``(H,W,[C])``.
+
+    threshold : int, optional
+        A threshold to use in order to invert only numbers above or below
+        the threshold.
+
+    Returns
+    -------
+    ndarray
+        Inverted image.
+
+    """
+    return arithmetic.invert(image, threshold=threshold)
+
+
 def pil_equalize(image, mask=None):
     """Equalize the image histogram.
 
@@ -350,20 +406,57 @@ def _pil_autocontrast_no_pil(image, cutoff, ignore):  # noqa: C901
     return result
 
 
-class PILSolarize(arithmetic.Solarize):
+# we don't use pil_solarize() here. but instead just subclass Invert,
+# which is easier and comes down to the same
+class PILSolarize(arithmetic.Invert):
     """Augmenter with identical outputs to PIL's ``solarize()`` function.
 
     This augmenter inverts all pixel values above a threshold.
 
-    This class is currently an alias for
-    :class:`imgaug.augmenters.arithmetic.Solarize`, i.e. both classes are
-    currently guarantueed to have the same outputs as PIL's function.
+    The outputs are identical to PIL's ``solarize()``.
 
     dtype support::
 
-        See :class:`imgaug.augmenters.arithmetic.Solarize`.
+        See :func:`imgaug.augmenters.arithmetic.Invert`.
+
+    Parameters
+    ----------
+    p : float or imgaug.parameters.StochasticParameter, optional
+        See :class:`imgaug.augmenters.arithmetic.Invert`.
+
+    per_channel : bool or float or imgaug.parameters.StochasticParameter, optional
+        See :class:`imgaug.augmenters.arithmetic.Invert`.
+
+    threshold : None or number or tuple of number or list of number or imgaug.parameters.StochasticParameter, optional
+        See :class:`imgaug.augmenters.arithmetic.Invert`.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.PILSolarize(0.5, threshold=(32, 128))
+
+    Invert the colors in ``50`` percent of all images for pixels with a
+    value between ``32`` and ``128`` or more. The threshold is sampled once
+    per image. The thresholding operation happens per channel.
 
     """
+
+    def __init__(self, p=1.0, threshold=128,
+                 name=None, deterministic=False, random_state=None):
+        super(PILSolarize, self).__init__(
+            p=p, per_channel=False,
+            min_value=None, max_value=None,
+            threshold=threshold, invert_above_threshold=True,
+            name=name, deterministic=deterministic, random_state=random_state)
 
 
 class PILPosterize(color.Posterize):

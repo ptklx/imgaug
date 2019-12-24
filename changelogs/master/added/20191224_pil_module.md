@@ -8,9 +8,10 @@
   * `imgaug.augmenters.pil.pil_equalize_`.
   * `imgaug.augmenters.pil.pil_autocontrast`.
   * `imgaug.augmenters.pil.pil_autocontrast_`.
+  * `imgaug.augmenters.pil.pil_solarize`
+  * `imgaug.augmenters.pil.pil_solarize_`
 * Added the following augmenters to the module:
   * `imgaug.augmenters.pil.PILSolarize`.
-    (Currently alias for `imgaug.augmenters.arithmetic.Solarize`.)
   * `imgaug.augmenters.pil.PILPosterize`.
     (Currently alias for `imgaug.augmenters.color.Posterize`.)
   * `imgaug.augmenters.pil.PILEqualize`.

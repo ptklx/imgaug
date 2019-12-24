@@ -35,6 +35,57 @@ from imgaug.testutils import (ArgCopyingMagicMock, keypoints_equal, reseed,
                               runtest_pickleable_uint8_img)
 
 
+class Test_pil_solarize_(unittest.TestCase):
+    @mock.patch("imgaug.augmenters.arithmetic.invert_")
+    def test_mocked_defaults(self, mock_sol):
+        arr = np.zeros((1,), dtype=np.uint8)
+        mock_sol.return_value = "foo"
+
+        observed = iaa.solarize_(arr)
+
+        args = mock_sol.call_args_list[0][0]
+        kwargs = mock_sol.call_args_list[0][1]
+        assert args[0] is arr
+        assert kwargs["threshold"] == 128
+        assert observed == "foo"
+
+    @mock.patch("imgaug.augmenters.arithmetic.invert_")
+    def test_mocked(self, mock_sol):
+        arr = np.zeros((1,), dtype=np.uint8)
+        mock_sol.return_value = "foo"
+
+        observed = iaa.solarize_(arr, threshold=5)
+
+        args = mock_sol.call_args_list[0][0]
+        kwargs = mock_sol.call_args_list[0][1]
+        assert args[0] is arr
+        assert kwargs["threshold"] == 5
+        assert observed == "foo"
+
+
+class Test_pil_solarize(unittest.TestCase):
+    def test_compare_with_pil(self):
+        def _solarize_pil(image, threshold):
+            img = PIL.Image.fromarray(image)
+            return np.asarray(PIL.ImageOps.solarize(img, threshold))
+
+        images = [
+            np.mod(np.arange(20*20*3), 255).astype(np.uint8)\
+                .reshape((20, 20, 3)),
+            iarandom.RNG(0).integers(0, 256, size=(1, 1, 3), dtype="uint8"),
+            iarandom.RNG(1).integers(0, 256, size=(20, 20, 3), dtype="uint8"),
+            iarandom.RNG(2).integers(0, 256, size=(40, 40, 3), dtype="uint8"),
+            iarandom.RNG(0).integers(0, 256, size=(20, 20), dtype="uint8")
+        ]
+
+        for image_idx, image in enumerate(images):
+            for threshold in np.arange(256):
+                with self.subTest(image_idx=image_idx, threshold=threshold):
+                    image_pil = _solarize_pil(image, threshold)
+                    image_iaa = iaa.pil_solarize(image, threshold)
+                    assert np.array_equal(image_pil, image_iaa)
+
+
 class Test_pil_equalize(unittest.TestCase):
     def test_by_comparison_with_pil(self):
         shapes = [
@@ -224,9 +275,14 @@ class Test_pil_autocontrast(unittest.TestCase):
 
 
 class TestPILSolarize(unittest.TestCase):
-    def test_returns_solarize(self):
-        aug = iaa.PILSolarize(0.05)
-        assert isinstance(aug, iaa.Solarize)
+    def test_returns_correct_instance(self):
+        aug = iaa.PILSolarize()
+        assert isinstance(aug, iaa.Invert)
+        assert aug.per_channel.value == 0
+        assert aug.min_value is None
+        assert aug.max_value is None
+        assert np.isclose(aug.threshold.value, 128)
+        assert aug.invert_above_threshold.value == 1
 
 
 class TestPILPosterize(unittest.TestCase):
