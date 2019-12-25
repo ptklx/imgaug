@@ -607,6 +607,47 @@ def pil_brightness(image, factor):
     return _apply_enhance_func(image, PIL.ImageEnhance.Brightness, factor)
 
 
+def pil_sharpness(image, factor):
+    """Improve or worsen the sharpness of an image.
+
+    This function has identical outputs to
+    :class:`PIL.ImageEnhance.Sharpness`.
+
+    dtype support::
+
+        * ``uint8``: yes; fully tested
+        * ``uint16``: no
+        * ``uint32``: no
+        * ``uint64``: no
+        * ``int8``: no
+        * ``int16``: no
+        * ``int32``: no
+        * ``int64``: no
+        * ``float16``: no
+        * ``float32``: no
+        * ``float64``: no
+        * ``float128``: no
+        * ``bool``: no
+
+    Parameters
+    ----------
+    image : ndarray
+        The image to modify.
+
+    factor : number
+        How much to sharpen the image. Interval ``[0.0, 2.0]``. Values
+        close to ``0.0`` denote decreased sharpness, values close to ``2.0``
+        denote increased sharpness.
+
+    Returns
+    -------
+    ndarray
+        Sharpness-modified image.
+
+    """
+    return _apply_enhance_func(image, PIL.ImageEnhance.Sharpness, factor)
+
+
 # we don't use pil_solarize() here. but instead just subclass Invert,
 # which is easier and comes down to the same
 class PILSolarize(arithmetic.Invert):

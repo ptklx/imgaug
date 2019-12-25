@@ -291,11 +291,12 @@ class Test_pil_autocontrast(unittest.TestCase):
 
 
 class _TestEnhanceFunc(unittest.TestCase):
-    def _test_by_comparison_with_pil(self, func, cls):
+    def _test_by_comparison_with_pil(
+            self, func, cls,
+            factors=[0.0, 0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99, 1.0, 1.5]):
         shapes = [(224, 224, 3), (32, 32, 3), (16, 8, 3), (1, 1, 3),
                   (32, 32, 4)]
         seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        factors = [0.0, 0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99, 1.0]
         for seed in seeds:
             for shape in shapes:
                 for factor in factors:
@@ -312,7 +313,8 @@ class _TestEnhanceFunc(unittest.TestCase):
 
                         assert np.array_equal(image_iaa, image_pil)
 
-    def _test_zero_sized_axes(self, func):
+    def _test_zero_sized_axes(self, func,
+                              factors=[0.0, 0.4, 1.0]):
         shapes = [
             (0, 0),
             (0, 1),
@@ -324,7 +326,7 @@ class _TestEnhanceFunc(unittest.TestCase):
         ]
 
         for shape in shapes:
-            for factor in [0.0, 0.4, 1.0]:
+            for factor in factors:
                 with self.subTest(shape=shape, factor=factor):
                     image = np.zeros(shape, dtype=np.uint8)
 
@@ -359,6 +361,19 @@ class Test_pil_brightness(_TestEnhanceFunc):
 
     def test_zero_sized_axes(self):
         self._test_zero_sized_axes(iaa.pil_brightness)
+
+
+class Test_pil_sharpness(_TestEnhanceFunc):
+    def test_by_comparison_with_pil(self):
+        self._test_by_comparison_with_pil(
+            iaa.pil_sharpness,
+            PIL.ImageEnhance.Sharpness,
+            factors=[0.0, 0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99, 1.0, 1.01,
+                     1.2, 1.7, 1.99, 2.0])
+
+    def test_zero_sized_axes(self):
+        self._test_zero_sized_axes(iaa.pil_brightness,
+                                   factors=[0.0, 0.4, 1.0, 1.5, 2.0])
 
 
 class TestPILSolarize(unittest.TestCase):
