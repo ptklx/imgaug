@@ -463,10 +463,26 @@ def _pil_autocontrast_no_pil(image, cutoff, ignore):  # noqa: C901
     return result
 
 
+def _apply_enhance_func(image, cls, factor):
+    assert image.dtype.name == "uint8", (
+        "Can apply PIL image enhancement only to uint8 images, "
+        "got dtype %s." % (image.dtype.name,))
+
+    if 0 in image.shape:
+        return np.copy(image)
+
+    return np.asarray(
+        cls(
+            PIL.Image.fromarray(image)
+        ).enhance(factor)
+    )
+
+
 def pil_color(image, factor):
     """Convert an image to grayscale.
 
-    This function has identical outputs to :func:`PIL.ImageEnhance.color`.
+    This function has identical outputs to
+    :class:`PIL.ImageEnhance.Color`.
 
     dtype support::
 
@@ -502,18 +518,50 @@ def pil_color(image, factor):
         Color-modified image.
 
     """
-    assert image.dtype.name == "uint8", (
-        "Can apply autocontrast only to uint8 images, got dtype %s." % (
-            image.dtype.name,))
+    return _apply_enhance_func(image, PIL.ImageEnhance.Color, factor)
 
-    if 0 in image.shape:
-        return np.copy(image)
 
-    return np.asarray(
-        PIL.ImageEnhance.Color(
-            PIL.Image.fromarray(image)
-        ).enhance(factor)
-    )
+def pil_contrast(image, factor):
+    """Worsen the contrast of an image.
+
+    This function has identical outputs to
+    :class:`PIL.ImageEnhance.Contrast`.
+
+    dtype support::
+
+        * ``uint8``: yes; fully tested
+        * ``uint16``: no
+        * ``uint32``: no
+        * ``uint64``: no
+        * ``int8``: no
+        * ``int16``: no
+        * ``int32``: no
+        * ``int64``: no
+        * ``float16``: no
+        * ``float32``: no
+        * ``float64``: no
+        * ``float128``: no
+        * ``bool``: no
+
+    Parameters
+    ----------
+    image : ndarray
+        The image to modify.
+
+    factor : number
+        How much contrast to keep in the image.
+        An alpha blending factor in interval ``[0.0, 1.0]`` denoting
+        the visibility of the original image, i.e. ``1.0`` leads to only
+        the original image being visible and ``0.0`` leads to only the
+        image without contrast (grayish image) being visible.
+
+    Returns
+    -------
+    ndarray
+        Contrast-modified image.
+
+    """
+    return _apply_enhance_func(image, PIL.ImageEnhance.Contrast, factor)
 
 
 # we don't use pil_solarize() here. but instead just subclass Invert,

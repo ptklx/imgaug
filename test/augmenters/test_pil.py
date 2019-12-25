@@ -290,8 +290,8 @@ class Test_pil_autocontrast(unittest.TestCase):
                         assert image_aug.shape == shape
 
 
-class Test_pil_color(unittest.TestCase):
-    def test_by_comparison_with_pil(self):
+class _TestEnhanceFunc(unittest.TestCase):
+    def _test_by_comparison_with_pil(self, func, cls):
         shapes = [(224, 224, 3), (32, 32, 3), (16, 8, 3), (1, 1, 3),
                   (32, 32, 4)]
         seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -300,19 +300,19 @@ class Test_pil_color(unittest.TestCase):
             for shape in shapes:
                 for factor in factors:
                     with self.subTest(shape=shape, seed=seed, factor=factor):
-                        image = iarandom.RNG(seed).integers(0, 256, size=shape,
-                                                            dtype="uint8")
+                        image = iarandom.RNG(seed).integers(
+                            0, 256, size=shape, dtype="uint8")
 
-                        image_iaa = iaa.pil_color(image, factor)
+                        image_iaa = func(image, factor)
                         image_pil = np.asarray(
-                            PIL.ImageEnhance.Color(
+                            cls(
                                 PIL.Image.fromarray(image)
                             ).enhance(factor)
                         )
 
                         assert np.array_equal(image_iaa, image_pil)
 
-    def test_zero_sized_axes(self):
+    def _test_zero_sized_axes(self, func):
         shapes = [
             (0, 0),
             (0, 1),
@@ -328,10 +328,28 @@ class Test_pil_color(unittest.TestCase):
                 with self.subTest(shape=shape, factor=factor):
                     image = np.zeros(shape, dtype=np.uint8)
 
-                    image_aug = iaa.pil_color(image, factor=factor)
+                    image_aug = func(image, factor=factor)
 
                     assert image_aug.dtype.name == "uint8"
                     assert image_aug.shape == shape
+
+
+class Test_pil_color(_TestEnhanceFunc):
+    def test_by_comparison_with_pil(self):
+        self._test_by_comparison_with_pil(iaa.pil_color,
+                                          PIL.ImageEnhance.Color)
+
+    def test_zero_sized_axes(self):
+        self._test_zero_sized_axes(iaa.pil_color)
+
+
+class Test_pil_contrast(_TestEnhanceFunc):
+    def test_by_comparison_with_pil(self):
+        self._test_by_comparison_with_pil(iaa.pil_contrast,
+                                          PIL.ImageEnhance.Contrast)
+
+    def test_zero_sized_axes(self):
+        self._test_zero_sized_axes(iaa.pil_contrast)
 
 
 class TestPILSolarize(unittest.TestCase):
