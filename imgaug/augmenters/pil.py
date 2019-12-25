@@ -564,6 +564,49 @@ def pil_contrast(image, factor):
     return _apply_enhance_func(image, PIL.ImageEnhance.Contrast, factor)
 
 
+def pil_brightness(image, factor):
+    """Worsen the brightness of an image.
+
+    This function has identical outputs to
+    :class:`PIL.ImageEnhance.Brightness`.
+
+    dtype support::
+
+        * ``uint8``: yes; fully tested
+        * ``uint16``: no
+        * ``uint32``: no
+        * ``uint64``: no
+        * ``int8``: no
+        * ``int16``: no
+        * ``int32``: no
+        * ``int64``: no
+        * ``float16``: no
+        * ``float32``: no
+        * ``float64``: no
+        * ``float128``: no
+        * ``bool``: no
+
+    Parameters
+    ----------
+    image : ndarray
+        The image to modify.
+
+    factor : number
+        How much brightness to keep in the image.
+        An alpha blending factor in interval ``[0.0, 1.0]`` denoting
+        the visibility of the original image, i.e. ``1.0`` leads to only
+        the original image being visible and ``0.0`` leads to only the
+        image without brightness (black image) being visible.
+
+    Returns
+    -------
+    ndarray
+        Brightness-modified image.
+
+    """
+    return _apply_enhance_func(image, PIL.ImageEnhance.Brightness, factor)
+
+
 # we don't use pil_solarize() here. but instead just subclass Invert,
 # which is easier and comes down to the same
 class PILSolarize(arithmetic.Invert):

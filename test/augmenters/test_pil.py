@@ -352,6 +352,15 @@ class Test_pil_contrast(_TestEnhanceFunc):
         self._test_zero_sized_axes(iaa.pil_contrast)
 
 
+class Test_pil_brightness(_TestEnhanceFunc):
+    def test_by_comparison_with_pil(self):
+        self._test_by_comparison_with_pil(iaa.pil_brightness,
+                                          PIL.ImageEnhance.Brightness)
+
+    def test_zero_sized_axes(self):
+        self._test_zero_sized_axes(iaa.pil_brightness)
+
+
 class TestPILSolarize(unittest.TestCase):
     def test_returns_correct_instance(self):
         aug = iaa.PILSolarize()

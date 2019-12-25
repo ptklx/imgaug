@@ -14,6 +14,7 @@
   * `imgaug.augmenters.pil.pil_posterize_`.
   * `imgaug.augmenters.pil.pil_color`.
   * `imgaug.augmenters.pil.pil_contrast`.
+  * `imgaug.augmenters.pil.pil_brightness`.
 * Added the following augmenters to the module:
   * `imgaug.augmenters.pil.PILSolarize`.
   * `imgaug.augmenters.pil.PILPosterize`.
