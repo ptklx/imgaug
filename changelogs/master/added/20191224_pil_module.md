@@ -1,4 +1,4 @@
-# Added Module `imgaug.augmenters.pil` #479 #480 #537
+# Added Module `imgaug.augmenters.pil` #479 #480
 
 * Added module `imgaug.augmenters.pil`, which contains augmenters and
   functions corresponding to commonly used PIL functions. Their outputs
@@ -12,6 +12,7 @@
   * `imgaug.augmenters.pil.pil_solarize_`
   * `imgaug.augmenters.pil.pil_posterize`.
   * `imgaug.augmenters.pil.pil_posterize_`.
+  * `imgaug.augmenters.pil.pil_color`.
 * Added the following augmenters to the module:
   * `imgaug.augmenters.pil.PILSolarize`.
   * `imgaug.augmenters.pil.PILPosterize`.

@@ -28,6 +28,7 @@ import numpy as np
 import cv2
 import PIL.Image
 import PIL.ImageOps
+import PIL.ImageEnhance
 
 import imgaug as ia
 from . import meta
@@ -350,7 +351,7 @@ def pil_autocontrast(image, cutoff=0, ignore=None):
 
     """
     assert image.dtype.name == "uint8", (
-        "Can only apply autocontrast to uint8 images, got dtype %s." % (
+        "Can apply autocontrast only to uint8 images, got dtype %s." % (
             image.dtype.name,))
 
     if 0 in image.shape:
@@ -460,6 +461,59 @@ def _pil_autocontrast_no_pil(image, cutoff, ignore):  # noqa: C901
     if image.ndim == 2:
         return result[..., 0]
     return result
+
+
+def pil_color(image, factor):
+    """Convert an image to grayscale.
+
+    This function has identical outputs to :func:`PIL.ImageEnhance.color`.
+
+    dtype support::
+
+        * ``uint8``: yes; fully tested
+        * ``uint16``: no
+        * ``uint32``: no
+        * ``uint64``: no
+        * ``int8``: no
+        * ``int16``: no
+        * ``int32``: no
+        * ``int64``: no
+        * ``float16``: no
+        * ``float32``: no
+        * ``float64``: no
+        * ``float128``: no
+        * ``bool``: no
+
+    Parameters
+    ----------
+    image : ndarray
+        The image to modify.
+
+    factor : number
+        Colorfulness of the output image.
+        An alpha blending factor in interval ``[0.0, 1.0]`` denoting
+        the visibility of the original image, i.e. ``1.0`` leads to only
+        the original image being visible and ``0.0`` leads to only the
+        grayscale image being visible.
+
+    Returns
+    -------
+    ndarray
+        Color-modified image.
+
+    """
+    assert image.dtype.name == "uint8", (
+        "Can apply autocontrast only to uint8 images, got dtype %s." % (
+            image.dtype.name,))
+
+    if 0 in image.shape:
+        return np.copy(image)
+
+    return np.asarray(
+        PIL.ImageEnhance.Color(
+            PIL.Image.fromarray(image)
+        ).enhance(factor)
+    )
 
 
 # we don't use pil_solarize() here. but instead just subclass Invert,
