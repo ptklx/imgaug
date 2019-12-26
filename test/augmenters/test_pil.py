@@ -376,6 +376,269 @@ class Test_pil_sharpness(_TestEnhanceFunc):
                                    factors=[0.0, 0.4, 1.0, 1.5, 2.0])
 
 
+class Test_pil_affine(unittest.TestCase):
+    def _test_aff_by_comparison_with_pil(self, arg_name, arg_values,
+                                         matrix_gen):
+        shapes = [(64, 64, 3), (32, 32, 3), (16, 8, 3), (1, 1, 3),
+                  (32, 32, 4)]
+        seeds = [1, 2, 3]
+        fillcolors = [None, 0, 128, (0, 255, 0)]
+        for shape in shapes:
+            for seed in seeds:
+                for fillcolor in fillcolors:
+                    for arg_value in arg_values:
+                        with self.subTest(shape=shape, seed=seed,
+                                          fillcolor=fillcolor,
+                                          **{arg_name: arg_value}):
+                            image = iarandom.RNG(seed).integers(
+                                0, 256, size=shape, dtype="uint8")
+
+                            matrix = matrix_gen(arg_value)
+
+                            image_warped = iaa.pil_affine(
+                                image,
+                                fillcolor=fillcolor,
+                                **{arg_name: arg_value})
+
+                            image_warped_exp = np.asarray(
+                                PIL.Image.fromarray(
+                                    image
+                                ).transform(shape[0:2][::-1],
+                                            PIL.Image.AFFINE,
+                                            matrix[:2, :].flat,
+                                            fillcolor=fillcolor)
+                            )
+
+                            assert np.array_equal(image_warped,
+                                                  image_warped_exp)
+
+    def test_scale_x_by_comparison_with_pil(self):
+        def _matrix_gen(scale):
+            return np.float32([
+                [1/scale, 0, 0],
+                [0, 1, 0],
+                [0, 0, 1]
+            ])
+
+        self._test_aff_by_comparison_with_pil(
+            "scale_x",
+            [0.01, 0.1, 0.9, 1.0, 1.5, 3.0],
+            _matrix_gen
+        )
+
+    def test_scale_y_by_comparison_with_pil(self):
+        def _matrix_gen(scale):
+            return np.float32([
+                [1, 0, 0],
+                [0, 1/scale, 0],
+                [0, 0, 1]
+            ])
+
+        self._test_aff_by_comparison_with_pil(
+            "scale_y",
+            [0.01, 0.1, 0.9, 1.0, 1.5, 3.0],
+            _matrix_gen
+        )
+
+    def test_translate_x_by_comparison_with_pil(self):
+        def _matrix_gen(translate):
+            return np.float32([
+                [1, 0, -translate],
+                [0, 1, 0],
+                [0, 0, 1]
+            ])
+
+        self._test_aff_by_comparison_with_pil(
+            "translate_x_px",
+            [-50, -10, -1, 0, 1, 10, 50],
+            _matrix_gen
+        )
+
+    def test_translate_y_by_comparison_with_pil(self):
+        def _matrix_gen(translate):
+            return np.float32([
+                [1, 0, 0],
+                [0, 1, -translate],
+                [0, 0, 1]
+            ])
+
+        self._test_aff_by_comparison_with_pil(
+            "translate_y_px",
+            [-50, -10, -1, 0, 1, 10, 50],
+            _matrix_gen
+        )
+
+    def test_rotate_by_comparison_with_pil(self):
+        def _matrix_gen(rotate):
+            r = np.deg2rad(rotate)
+            return np.float32([
+                [np.cos(r), np.sin(r), 0],
+                [-np.sin(r), np.cos(r), 0],
+                [0, 0, 1]
+            ])
+
+        self._test_aff_by_comparison_with_pil(
+            "rotate_deg",
+            [-50, -10, -1, 0, 1, 10, 50],
+            _matrix_gen
+        )
+
+    def test_shear_x_by_comparison_with_pil(self):
+        def _matrix_gen(shear):
+            s = (-1) * np.deg2rad(shear)
+            return np.float32([
+                [1, np.tanh(s), 0],
+                [0, 1, 0],
+                [0, 0, 1]
+            ])
+
+        self._test_aff_by_comparison_with_pil(
+            "shear_x_deg",
+            [-50, -10, -1, 0, 1, 10, 50],
+            _matrix_gen
+        )
+
+    def test_shear_y_by_comparison_with_pil(self):
+        def _matrix_gen(shear):
+            s = (-1) * np.deg2rad(shear)
+            return np.float32([
+                [1, 0, 0],
+                [np.tanh(s), 1, 0],
+                [0, 0, 1]
+            ])
+
+        self._test_aff_by_comparison_with_pil(
+            "shear_y_deg",
+            [-50, -10, -1, 0, 1, 10, 50],
+            _matrix_gen
+        )
+
+    def test_scale_x(self):
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        image[50, 60] = 255
+
+        image_aug = iaa.pil_affine(image, scale_x=1.5)
+
+        y, x = np.unravel_index(np.argmax(image_aug[..., 0]),
+                                image_aug.shape[0:2])
+
+        assert 50 - 1 <= y <= 50 + 1
+        assert x > 60
+
+    def test_scale_y(self):
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        image[60, 50] = 255
+
+        image_aug = iaa.pil_affine(image, scale_y=1.5)
+
+        y, x = np.unravel_index(np.argmax(image_aug[..., 0]),
+                                image_aug.shape[0:2])
+
+        assert 50 - 1 <= x <= 50 + 1
+        assert y > 60
+
+    def test_translate_x_px(self):
+        image = np.zeros((20, 20, 3), dtype=np.uint8)
+        image[10, 15] = 255
+
+        image_aug = iaa.pil_affine(image, translate_x_px=1)
+
+        assert image_aug[10, 15, 0] == 0
+        assert image_aug[10, 16, 0] == 255
+        assert np.all(image_aug[0, :] == 0)
+
+    def test_translate_y_px(self):
+        image = np.zeros((20, 20, 3), dtype=np.uint8)
+        image[15, 10] = 255
+
+        image_aug = iaa.pil_affine(image, translate_y_px=1)
+
+        assert image_aug[15, 10, 0] == 0
+        assert image_aug[16, 10, 0] == 255
+        assert np.all(image_aug[:, 0] == 0)
+
+    def test_rotate(self):
+        image = np.zeros((20, 20, 3), dtype=np.uint8)
+        image[0, 10] = 255
+
+        image_aug = iaa.pil_affine(image, rotate_deg=45)
+
+        assert image_aug[7, 7, 0] == 255
+
+    def test_shear_x(self):
+        image = np.zeros((20, 20, 3), dtype=np.uint8)
+        image[5, 10] = 255
+
+        image_aug = iaa.pil_affine(image, shear_x_deg=20)
+
+        y, x = np.unravel_index(np.argmax(image_aug[..., 0]),
+                                image_aug.shape[0:2])
+
+        assert y == 5
+        assert x > 10
+
+    def test_shear_y(self):
+        image = np.zeros((20, 20, 3), dtype=np.uint8)
+        image[10, 15] = 255
+
+        image_aug = iaa.pil_affine(image, shear_y_deg=20)
+
+        y, x = np.unravel_index(np.argmax(image_aug[..., 0]),
+                                image_aug.shape[0:2])
+
+        assert y > 10
+        assert x == 15
+
+    def test_fillcolor_is_none(self):
+        image = np.ones((20, 20, 3), dtype=np.uint8)
+
+        image_aug = iaa.pil_affine(image, translate_x_px=1, fillcolor=None)
+
+        assert np.all(image_aug[:, :1, :] == 0)
+        assert np.all(image_aug[:, 1:, :] == 1)
+
+    def test_fillcolor_is_int(self):
+        image = np.ones((20, 20, 3), dtype=np.uint8)
+
+        image_aug = iaa.pil_affine(image, translate_x_px=1, fillcolor=128)
+
+        assert np.all(image_aug[:, :1, 0] == 128)
+        assert np.all(image_aug[:, :1, 1] == 0)
+        assert np.all(image_aug[:, :1, 2] == 0)
+        assert np.all(image_aug[:, 1:, :] == 1)
+
+    def test_fillcolor_is_int_grayscale(self):
+        image = np.ones((20, 20), dtype=np.uint8)
+
+        image_aug = iaa.pil_affine(image, translate_x_px=1, fillcolor=128)
+
+        assert np.all(image_aug[:, :1] == 128)
+        assert np.all(image_aug[:, 1:] == 1)
+
+    def test_fillcolor_is_tuple(self):
+        image = np.ones((20, 20, 3), dtype=np.uint8)
+
+        image_aug = iaa.pil_affine(image, translate_x_px=1,
+                                   fillcolor=(2, 3, 4))
+
+        assert np.all(image_aug[:, :1, 0] == 2)
+        assert np.all(image_aug[:, :1, 1] == 3)
+        assert np.all(image_aug[:, :1, 2] == 4)
+        assert np.all(image_aug[:, 1:, :] == 1)
+
+    def test_fillcolor_is_tuple_more_values_than_channels(self):
+        image = np.ones((20, 20, 3), dtype=np.uint8)
+
+        image_aug = iaa.pil_affine(image, translate_x_px=1,
+                                   fillcolor=(2, 3, 4, 5))
+
+        assert image_aug.shape == (20, 20, 3)
+        assert np.all(image_aug[:, :1, 0] == 2)
+        assert np.all(image_aug[:, :1, 1] == 3)
+        assert np.all(image_aug[:, :1, 2] == 4)
+        assert np.all(image_aug[:, 1:, :] == 1)
+
+
 class TestPILSolarize(unittest.TestCase):
     def test_returns_correct_instance(self):
         aug = iaa.PILSolarize()

@@ -16,6 +16,7 @@
   * `imgaug.augmenters.pil.pil_contrast`.
   * `imgaug.augmenters.pil.pil_brightness`.
   * `imgaug.augmenters.pil.pil_sharpness`.
+  * `imgaug.augmenters.pil.pil_affine`.
 * Added the following augmenters to the module:
   * `imgaug.augmenters.pil.PILSolarize`.
   * `imgaug.augmenters.pil.PILPosterize`.

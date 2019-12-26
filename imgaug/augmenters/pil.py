@@ -648,6 +648,140 @@ def pil_sharpness(image, factor):
     return _apply_enhance_func(image, PIL.ImageEnhance.Sharpness, factor)
 
 
+def _pil_create_affine_matrix(scale_x=1.0, scale_y=1.0,
+                              translate_x_px=0, translate_y_px=0,
+                              rotate_deg=0,
+                              shear_x_deg=0, shear_y_deg=0):
+    scale_x = max(scale_x, 0.0001)
+    scale_y = max(scale_y, 0.0001)
+    scale_x = 1 / scale_x
+    scale_y = 1 / scale_y
+
+    translate_x_px = (-1) * translate_x_px
+    translate_y_px = (-1) * translate_y_px
+
+    rotate_rad, shear_x_rad, shear_y_rad = np.deg2rad([rotate_deg,
+                                                       shear_x_deg,
+                                                       shear_y_deg])
+    shear_x_rad = (-1) * shear_x_rad
+    shear_y_rad = (-1) * shear_y_rad
+
+    matrix_scale = np.array([
+        [scale_x, 0, 0],
+        [0, scale_y, 0],
+        [0, 0, 1]
+    ], dtype=np.float32)
+
+    matrix_translate = np.array([
+        [1, 0, translate_x_px],
+        [0, 1, translate_y_px],
+        [0, 0, 1]
+    ], dtype=np.float32)
+
+    matrix_shear = np.array([
+        [1, np.tanh(shear_x_rad), 0],
+        [np.tanh(shear_y_rad), 1, 0],
+        [0, 0, 1]
+    ], dtype=np.float32)
+
+    matrix_rotate = np.array([
+        [np.cos(rotate_rad), np.sin(rotate_rad), 0],
+        [-np.sin(rotate_rad), np.cos(rotate_rad), 0],
+        [0, 0, 1]
+    ], dtype=np.float32)
+
+    matrix = np.array([
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 0]
+    ], dtype=np.float32)
+    for other_matrix in [matrix_rotate, matrix_shear,
+                         matrix_scale, matrix_translate]:
+        matrix = np.matmul(matrix, other_matrix)
+
+    return matrix
+
+
+def pil_affine(image,
+               scale_x=1.0, scale_y=1.0,
+               translate_x_px=0, translate_y_px=0,
+               rotate_deg=0,
+               shear_x_deg=0, shear_y_deg=0,
+               fillcolor=None):
+    """Apply an affine transformation to an image.
+
+    This function has identical outputs to
+    :func:`PIL.Image.transform` with ``method=PIL.Image.AFFINE``.
+
+    Parameters
+    ----------
+    image : ndarray
+        The image to modify. Expected to be ``uint8`` with shape ``(H,W)``
+        or ``(H,W,C)`` with ``C`` being ``3`` or ``4``.
+
+    scale_x : number
+        Affine scale factor along the x-axis, where ``1.0`` denotes an
+        identity transform and ``2.0`` is a strong zoom-in effect.
+
+    scale_x : number
+        Affine scale factor along the y-axis, where ``1.0`` denotes an
+        identity transform and ``2.0`` is a strong zoom-in effect.
+
+    translate_x_px : number
+        Affine translation along the x-axis in pixels.
+        Positive values translate the image towards the right.
+
+    translate_x_px : number
+        Affine translation along the y-axis in pixels.
+        Positive values translate the image towards the bottom.
+
+    rotate_deg : number
+        Affine rotation in degrees *around the top left* of the image.
+
+    shear_x_deg : number
+        Affine shearing in degrees along the x-axis with center point
+        being the top-left of the image.
+
+    shear_y_deg : number
+        Affine shearing in degrees along the y-axis with center point
+        being the top-left of the image.
+
+    fillcolor : None or int or tuple of int
+        Color tuple or intensity value to use when filling up newly
+        created pixels. ``None`` fills with zeros. ``int`` will only fill
+        the ``0`` th channel with that intensity value and all other channels
+        with ``0`` (this is the default behaviour of PIL, use a tuple to
+        fill all channels).
+
+    Returns
+    -------
+    ndarray
+        Image after affine transformation.
+
+    """
+    assert image.dtype.name == "uint8", (
+        "Can apply PIL affine transformation only to uint8 images, "
+        "got dtype %s." % (image.dtype.name,))
+
+    if 0 in image.shape:
+        return np.copy(image)
+
+    image_pil = PIL.Image.fromarray(image)
+    matrix = _pil_create_affine_matrix(scale_x=scale_x,
+                                       scale_y=scale_y,
+                                       translate_x_px=translate_x_px,
+                                       translate_y_px=translate_y_px,
+                                       rotate_deg=rotate_deg,
+                                       shear_x_deg=shear_x_deg,
+                                       shear_y_deg=shear_y_deg)
+    matrix = matrix[:2, :].flat
+
+    return np.asarray(
+        image_pil.transform(image_pil.size, PIL.Image.AFFINE, matrix,
+                            fillcolor=fillcolor)
+    )
+
+
 # we don't use pil_solarize() here. but instead just subclass Invert,
 # which is easier and comes down to the same
 class PILSolarize(arithmetic.Invert):
