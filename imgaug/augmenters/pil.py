@@ -8,7 +8,8 @@ for the future. Use the augmenters in this module if identical outputs
 to PIL are required.
 
 The augmenters in this module may partially wrap PIL. They are usually
-about as fast as PIL and in some cases faster.
+about as fast as PIL and in some cases faster. The augmenters do not
+have to use PIL if there is a faster way to achieve the same outputs.
 
 List of augmenters:
 
@@ -16,6 +17,7 @@ List of augmenters:
     * PILPosterize
     * PILEqualize
     * PILAutocontrast
+    * PILColor
 
 """
 from __future__ import print_function, division, absolute_import
@@ -972,3 +974,72 @@ class PILAutocontrast(contrast._ContrastFuncWrapper):
             deterministic=deterministic,
             random_state=random_state
         )
+
+
+class PILColor(meta.Augmenter):
+    """Convert images to grayscale.
+
+    This augmenter has identical outputs to :class:`PIL.ImageEnhance.Color`.
+
+    dtype support::
+
+        See :func:`imgaug.augmenters.pil.pil_color`.
+
+    Parameters
+    ----------
+    factor : number or tuple of number or list of number or imgaug.parameters.StochasticParameter, optional
+        Colorfulness of the output image.
+        An alpha blending factor in interval ``[0.0, 1.0]`` denoting
+        the visibility of the original image, i.e. ``1.0`` leads to only
+        the original image being visible and ``0.0`` leads to only the
+        grayscale image being visible.
+
+            * If ``number``: The value will be used for all images.
+            * If ``tuple`` ``(a, b)``: A value will be uniformly sampled per
+              image from the interval ``[a, b)``.
+            * If ``list``: A random value will be picked from the list per
+              image.
+            * If ``StochasticParameter``: Per batch of size ``N``, the
+              parameter will be queried once to return ``(N,)`` samples.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.PILColor()
+
+    Create an augmenter to remove a random fraction of color from
+    input images.
+
+    """
+    def __init__(self, factor=(0.0, 1.001),
+                 name=None, deterministic=False, random_state=None):
+        super(PILColor, self).__init__(
+            name=name, deterministic=deterministic, random_state=random_state)
+        self.factor = iap.handle_continuous_param(
+            factor, "factor", value_range=(0.0, 1.001), tuple_to_uniform=True,
+            list_to_choice=True)
+
+    def _augment_batch(self, batch, random_state, parents, hooks):
+        if batch.images is None:
+            return batch
+
+        factors = self._draw_samples(len(batch.images), random_state)
+        if batch.images:
+            for image, factor in zip(batch.images, factors):
+                image[...] = pil_color(image, factor)
+        return batch
+
+    def _draw_samples(self, nb_rows, random_state):
+        return self.factor.draw_samples((nb_rows,), random_state=random_state)
+
+    def get_parameters(self):
+        return [self.factor]
