@@ -1107,3 +1107,57 @@ class PILContrast(_PILEnhanceBase):
             factor=factor,
             factor_value_range=(0.0, 1.001),
             name=name, deterministic=deterministic, random_state=random_state)
+
+
+class PILBrightness(_PILEnhanceBase):
+    """Change the brightness of images.
+
+    This augmenter has identical outputs to
+    :class:`PIL.ImageEnhance.Brightness`.
+
+    dtype support::
+
+        See :func:`imgaug.augmenters.pil.pil_brightness`.
+
+    Parameters
+    ----------
+    factor : number or tuple of number or list of number or imgaug.parameters.StochasticParameter, optional
+        How much brightness to keep in the image.
+        An alpha blending factor in interval ``[0.0, 1.0]`` denoting
+        the visibility of the original image, i.e. ``1.0`` leads to only
+        the original image being visible and ``0.0`` leads to only the
+        image without brightness (black image) being visible.
+
+            * If ``number``: The value will be used for all images.
+            * If ``tuple`` ``(a, b)``: A value will be uniformly sampled per
+              image from the interval ``[a, b)``.
+            * If ``list``: A random value will be picked from the list per
+              image.
+            * If ``StochasticParameter``: Per batch of size ``N``, the
+              parameter will be queried once to return ``(N,)`` samples.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.PILBrightness()
+
+    Create an augmenter that worsens the brightness of an image by a random
+    factor.
+
+    """
+    def __init__(self, factor=(0.1, 1.0),
+                 name=None, deterministic=False, random_state=None):
+        super(PILBrightness, self).__init__(
+            func=pil_brightness,
+            factor=factor,
+            factor_value_range=(0.0, 1.001),
+            name=name, deterministic=deterministic, random_state=random_state)

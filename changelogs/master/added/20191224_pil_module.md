@@ -25,3 +25,4 @@
   * `imgaug.augmenters.pil.PILAutocontrast`
   * `imgaug.augmenters.pil.PILColor`
   * `imgaug.augmenters.pil.PILContrast`
+  * `imgaug.augmenters.pil.PILBrightness`

@@ -833,3 +833,38 @@ class TestPILContrast(unittest.TestCase):
         hm_aug = aug(heatmaps=hm)
 
         assert np.allclose(hm_aug.get_arr(), hm.get_arr())
+
+
+# we don't have to test very much here, because some functions of the base
+# class are already tested via PILColor
+class TestPILBrightness(unittest.TestCase):
+    @mock.patch("imgaug.augmenters.pil.pil_brightness")
+    def test_mocked(self, mock_pilbr):
+        aug = iaa.PILBrightness(0.75)
+        image = np.zeros((1, 1, 3), dtype=np.uint8)
+        mock_pilbr.return_value = np.full((1, 1, 3), 128, dtype=np.uint8)
+
+        image_aug = aug(image=image)
+
+        assert mock_pilbr.call_count == 1
+        assert ia.is_np_array(mock_pilbr.call_args_list[0][0][0])
+        assert np.isclose(mock_pilbr.call_args_list[0][0][1], 0.75, rtol=0,
+                          atol=1e-4)
+        assert np.all(image_aug == 128)
+
+    def test_simple_image(self):
+        aug = iaa.PILBrightness(0.0)
+        image = np.full((2, 2, 3), 255, dtype=np.uint8)
+
+        image_aug = aug(image=image)
+
+        assert np.all(image_aug < 255)
+
+    def test_batch_contains_no_images(self):
+        aug = iaa.PILBrightness(0.75)
+        hm_arr = np.ones((3, 3, 1), dtype=np.float32)
+        hm = ia.HeatmapsOnImage(hm_arr, shape=(3, 3, 3))
+
+        hm_aug = aug(heatmaps=hm)
+
+        assert np.allclose(hm_aug.get_arr(), hm.get_arr())
