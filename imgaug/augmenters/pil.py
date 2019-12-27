@@ -610,7 +610,7 @@ def pil_brightness(image, factor):
 
 
 def pil_sharpness(image, factor):
-    """Improve or worsen the sharpness of an image.
+    """Change the sharpness of an image.
 
     This function has identical outputs to
     :class:`PIL.ImageEnhance.Sharpness`.
@@ -1161,3 +1161,58 @@ class PILBrightness(_PILEnhanceBase):
             factor=factor,
             factor_value_range=(0.0, 1.001),
             name=name, deterministic=deterministic, random_state=random_state)
+
+
+class PILSharpness(_PILEnhanceBase):
+    """Change the sharpness of images.
+
+    This augmenter has identical outputs to
+    :class:`PIL.ImageEnhance.Sharpness`.
+
+    dtype support::
+
+        See :func:`imgaug.augmenters.pil.pil_sharpness`.
+
+    Parameters
+    ----------
+    factor : number or tuple of number or list of number or imgaug.parameters.StochasticParameter, optional
+        How much to sharpen the image. Interval ``[0.0, 2.0]``. Values
+        close to ``0.0`` denote decreased sharpness, values close to ``2.0``
+        denote increased sharpness.
+
+            * If ``number``: The value will be used for all images.
+            * If ``tuple`` ``(a, b)``: A value will be uniformly sampled per
+              image from the interval ``[a, b)``.
+            * If ``list``: A random value will be picked from the list per
+              image.
+            * If ``StochasticParameter``: Per batch of size ``N``, the
+              parameter will be queried once to return ``(N,)`` samples.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.PILSharpness()
+
+    Create an augmenter that randomly decreases or increases the sharpness
+    of an image.
+
+    """
+    def __init__(self, factor=(0.1, 1.9),
+                 name=None, deterministic=False, random_state=None):
+        super(PILSharpness, self).__init__(
+            func=pil_sharpness,
+            factor=factor,
+            factor_value_range=(0.0, 2.001),
+            name=name, deterministic=deterministic, random_state=random_state)
+
+
+
