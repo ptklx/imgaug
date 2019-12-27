@@ -747,7 +747,7 @@ class TestPILColor(unittest.TestCase):
     def test___init___defaults(self):
         aug = iaa.PILColor()
         assert np.isclose(aug.factor.a.value, 0.0)
-        assert np.isclose(aug.factor.b.value, 1.001)
+        assert np.isclose(aug.factor.b.value, 1.0)
 
     def test___init___custom(self):
         aug = iaa.PILColor(0.75)
@@ -793,3 +793,43 @@ class TestPILColor(unittest.TestCase):
         aug = iaa.PILColor(0.75)
         params = aug.get_parameters()
         assert params[0] is aug.factor
+
+
+# we don't have to test very much here, because some functions of the base
+# class are already tested via PILColor
+class TestPILContrast(unittest.TestCase):
+    @mock.patch("imgaug.augmenters.pil.pil_contrast")
+    def test_mocked(self, mock_pilco):
+        aug = iaa.PILContrast(0.75)
+        image = np.zeros((1, 1, 3), dtype=np.uint8)
+        mock_pilco.return_value = np.full((1, 1, 3), 128, dtype=np.uint8)
+
+        image_aug = aug(image=image)
+
+        assert mock_pilco.call_count == 1
+        assert ia.is_np_array(mock_pilco.call_args_list[0][0][0])
+        assert np.isclose(mock_pilco.call_args_list[0][0][1], 0.75, rtol=0,
+                          atol=1e-4)
+        assert np.all(image_aug == 128)
+
+    def test_simple_image(self):
+        aug = iaa.PILContrast(0.0)
+        image = np.full((2, 2, 3), 128, dtype=np.uint8)
+        image[0, :, :] = 200
+
+        image_aug = aug(image=image)
+
+        diff_before = np.average(np.abs(image.astype(np.int32)
+                                        - np.average(image)))
+        diff_after = np.average(np.abs(image_aug.astype(np.int32)
+                                       - np.average(image_aug)))
+        assert diff_after < diff_before
+
+    def test_batch_contains_no_images(self):
+        aug = iaa.PILContrast(0.75)
+        hm_arr = np.ones((3, 3, 1), dtype=np.float32)
+        hm = ia.HeatmapsOnImage(hm_arr, shape=(3, 3, 3))
+
+        hm_aug = aug(heatmaps=hm)
+
+        assert np.allclose(hm_aug.get_arr(), hm.get_arr())

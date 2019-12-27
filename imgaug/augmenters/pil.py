@@ -524,7 +524,7 @@ def pil_color(image, factor):
 
 
 def pil_contrast(image, factor):
-    """Worsen the contrast of an image.
+    """Change the contrast of an image.
 
     This function has identical outputs to
     :class:`PIL.ImageEnhance.Contrast`.
@@ -976,7 +976,34 @@ class PILAutocontrast(contrast._ContrastFuncWrapper):
         )
 
 
-class PILColor(meta.Augmenter):
+class _PILEnhanceBase(meta.Augmenter):
+    def __init__(self, func, factor, factor_value_range,
+                 name=None, deterministic=False, random_state=None):
+        super(_PILEnhanceBase, self).__init__(
+            name=name, deterministic=deterministic, random_state=random_state)
+        self.func = func
+        self.factor = iap.handle_continuous_param(
+            factor, "factor", value_range=factor_value_range,
+            tuple_to_uniform=True, list_to_choice=True)
+
+    def _augment_batch(self, batch, random_state, parents, hooks):
+        if batch.images is None:
+            return batch
+
+        factors = self._draw_samples(len(batch.images), random_state)
+        if batch.images:
+            for image, factor in zip(batch.images, factors):
+                image[...] = self.func(image, factor)
+        return batch
+
+    def _draw_samples(self, nb_rows, random_state):
+        return self.factor.draw_samples((nb_rows,), random_state=random_state)
+
+    def get_parameters(self):
+        return [self.factor]
+
+
+class PILColor(_PILEnhanceBase):
     """Convert images to grayscale.
 
     This augmenter has identical outputs to :class:`PIL.ImageEnhance.Color`.
@@ -1020,26 +1047,63 @@ class PILColor(meta.Augmenter):
     input images.
 
     """
-    def __init__(self, factor=(0.0, 1.001),
+    def __init__(self, factor=(0.0, 1.0),
                  name=None, deterministic=False, random_state=None):
         super(PILColor, self).__init__(
+            func=pil_color,
+            factor=factor,
+            factor_value_range=(0.0, 1.001),
             name=name, deterministic=deterministic, random_state=random_state)
-        self.factor = iap.handle_continuous_param(
-            factor, "factor", value_range=(0.0, 1.001), tuple_to_uniform=True,
-            list_to_choice=True)
 
-    def _augment_batch(self, batch, random_state, parents, hooks):
-        if batch.images is None:
-            return batch
 
-        factors = self._draw_samples(len(batch.images), random_state)
-        if batch.images:
-            for image, factor in zip(batch.images, factors):
-                image[...] = pil_color(image, factor)
-        return batch
+class PILContrast(_PILEnhanceBase):
+    """Change the contrast of images.
 
-    def _draw_samples(self, nb_rows, random_state):
-        return self.factor.draw_samples((nb_rows,), random_state=random_state)
+    This augmenter has identical outputs to :class:`PIL.ImageEnhance.Contrast`.
 
-    def get_parameters(self):
-        return [self.factor]
+    dtype support::
+
+        See :func:`imgaug.augmenters.pil.pil_contrast`.
+
+    Parameters
+    ----------
+    factor : number or tuple of number or list of number or imgaug.parameters.StochasticParameter, optional
+        How much contrast to keep in the image.
+        An alpha blending factor in interval ``[0.0, 1.0]`` denoting
+        the visibility of the original image, i.e. ``1.0`` leads to only
+        the original image being visible and ``0.0`` leads to only the
+        image without contrast (grayish image) being visible.
+
+            * If ``number``: The value will be used for all images.
+            * If ``tuple`` ``(a, b)``: A value will be uniformly sampled per
+              image from the interval ``[a, b)``.
+            * If ``list``: A random value will be picked from the list per
+              image.
+            * If ``StochasticParameter``: Per batch of size ``N``, the
+              parameter will be queried once to return ``(N,)`` samples.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.PILContrast()
+
+    Create an augmenter that worsens the contrast of an image by a random
+    factor.
+
+    """
+    def __init__(self, factor=(0.1, 1.0),
+                 name=None, deterministic=False, random_state=None):
+        super(PILContrast, self).__init__(
+            func=pil_contrast,
+            factor=factor,
+            factor_value_range=(0.0, 1.001),
+            name=name, deterministic=deterministic, random_state=random_state)

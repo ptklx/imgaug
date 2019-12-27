@@ -24,3 +24,4 @@
   * `imgaug.augmenters.pil.PILEqualize`
   * `imgaug.augmenters.pil.PILAutocontrast`
   * `imgaug.augmenters.pil.PILColor`
+  * `imgaug.augmenters.pil.PILContrast`
