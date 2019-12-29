@@ -27,3 +27,4 @@
   * `imgaug.augmenters.pil.PILContrast`
   * `imgaug.augmenters.pil.PILBrightness`
   * `imgaug.augmenters.pil.PILSharpness`
+  * `imgaug.augmenters.pil.PILAffine`

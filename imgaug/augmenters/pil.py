@@ -37,6 +37,7 @@ from . import meta
 from . import arithmetic
 from . import color
 from . import contrast
+from . import geometric
 from .. import parameters as iap
 
 
@@ -725,7 +726,7 @@ def pil_affine(image,
         Affine scale factor along the x-axis, where ``1.0`` denotes an
         identity transform and ``2.0`` is a strong zoom-in effect.
 
-    scale_x : number
+    scale_y : number
         Affine scale factor along the y-axis, where ``1.0`` denotes an
         identity transform and ``2.0`` is a strong zoom-in effect.
 
@@ -733,7 +734,7 @@ def pil_affine(image,
         Affine translation along the x-axis in pixels.
         Positive values translate the image towards the right.
 
-    translate_x_px : number
+    translate_y_px : number
         Affine translation along the y-axis in pixels.
         Positive values translate the image towards the bottom.
 
@@ -883,6 +884,7 @@ class PILEqualize(meta.Augmenter):
     Equalize the histograms of all input images.
 
     """
+
     def __init__(self, name=None, deterministic=False, random_state=None):
         super(PILEqualize, self).__init__(
             name=name, deterministic=deterministic, random_state=random_state)
@@ -953,6 +955,7 @@ class PILAutocontrast(contrast._ContrastFuncWrapper):
     The cutoff value is sampled per *channel* instead of per *image*.
 
     """
+
     def __init__(self, cutoff=(0, 20), per_channel=False,
                  name=None, deterministic=False, random_state=None):
         params1d = [
@@ -1047,6 +1050,7 @@ class PILColor(_PILEnhanceBase):
     input images.
 
     """
+
     def __init__(self, factor=(0.0, 1.0),
                  name=None, deterministic=False, random_state=None):
         super(PILColor, self).__init__(
@@ -1100,6 +1104,7 @@ class PILContrast(_PILEnhanceBase):
     factor.
 
     """
+
     def __init__(self, factor=(0.1, 1.0),
                  name=None, deterministic=False, random_state=None):
         super(PILContrast, self).__init__(
@@ -1154,6 +1159,7 @@ class PILBrightness(_PILEnhanceBase):
     factor.
 
     """
+
     def __init__(self, factor=(0.1, 1.0),
                  name=None, deterministic=False, random_state=None):
         super(PILBrightness, self).__init__(
@@ -1206,6 +1212,7 @@ class PILSharpness(_PILEnhanceBase):
     of an image.
 
     """
+
     def __init__(self, factor=(0.1, 1.9),
                  name=None, deterministic=False, random_state=None):
         super(PILSharpness, self).__init__(
@@ -1215,4 +1222,146 @@ class PILSharpness(_PILEnhanceBase):
             name=name, deterministic=deterministic, random_state=random_state)
 
 
+class PILAffine(geometric.Affine):
+    """Apply PIL-like affine transformations to images.
 
+    This augmenter has identical outputs to
+    :func:`PIL.Image.transform` with parameter ``method=PIL.Image.AFFINE``.
+
+    .. note ::
+
+        This augmenter can currently only transform image-data.
+        Batches containing heatmaps, segmentation maps and
+        coordinate-based augmentables will be rejected with an error.
+        Use :class:`imgaug.augmenters.geometric.Affine` if you have to
+        transform such inputs.
+
+    dtype support::
+
+        * ``uint8``: yes; tested
+        * ``uint16``: no
+        * ``uint32``: no
+        * ``uint64``: no
+        * ``int8``: no
+        * ``int16``: no
+        * ``int32``: no
+        * ``int64``: no
+        * ``float16``: no
+        * ``float32``: no
+        * ``float64``: no
+        * ``float128``: no
+        * ``bool``: no
+
+    Parameters
+    ----------
+    scale : number or tuple of number or list of number or imgaug.parameters.StochasticParameter or dict {"x": number/tuple/list/StochasticParameter, "y": number/tuple/list/StochasticParameter}, optional
+        See :class:`imgaug.augmenters.geometric.Affine`.
+
+    translate_percent : None or number or tuple of number or list of number or imgaug.parameters.StochasticParameter or dict {"x": number/tuple/list/StochasticParameter, "y": number/tuple/list/StochasticParameter}, optional
+        See :class:`imgaug.augmenters.geometric.Affine`.
+
+    translate_px : None or int or tuple of int or list of int or imgaug.parameters.StochasticParameter or dict {"x": int/tuple/list/StochasticParameter, "y": int/tuple/list/StochasticParameter}, optional
+        See :class:`imgaug.augmenters.geometric.Affine`.
+
+    rotate : number or tuple of number or list of number or imgaug.parameters.StochasticParameter, optional
+        See :class:`imgaug.augmenters.geometric.Affine`.
+
+    shear : number or tuple of number or list of number or imgaug.parameters.StochasticParameter or dict {"x": int/tuple/list/StochasticParameter, "y": int/tuple/list/StochasticParameter}, optional
+        See :class:`imgaug.augmenters.geometric.Affine`.
+
+    fillcolor : number or tuple of number or list of number or imgaug.ALL or imgaug.parameters.StochasticParameter, optional
+        See parameter ``cval`` in :class:`imgaug.augmenters.geometric.Affine`.
+
+    name : None or str, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    deterministic : bool, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    random_state : None or int or imgaug.random.RNG or numpy.random.Generator or numpy.random.BitGenerator or numpy.random.SeedSequence or numpy.random.RandomState, optional
+        See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
+
+    Examples
+    --------
+    >>> import imgaug.augmenters as iaa
+    >>> aug = iaa.PILAffine(scale={"x": (0.8, 1.2), "y": (0.5, 1.5)})
+
+    Create an augmenter that applies affine scaling (zoom in/out) to images.
+    Along the x-axis they are scaled to 80-120% of their size, along
+    the y-axis to 50-150% (both values randomly and uniformly chosen per
+    image).
+
+    >>> aug = iaa.PILAffine(translate_px={"x": 0, "y": [-10, 10]},
+    >>>                     fillcolor=128)
+
+    Create an augmenter that translates images along the y-axis by either
+    ``-10px`` or ``10px``. Newly created pixels are always filled with
+    the value ``128`` (along all channels).
+
+    >>> aug = iaa.PILAffine(rotate=(-20, 20), fillcolor=(0, 256))
+
+    Rotate an image by ``-20`` to ``20`` degress and fill up all newly
+    created pixels with a random RGB color.
+
+    See the similar augmenter :class:`imgaug.augmenters.geometric.Affine`
+    for more examples.
+
+    """
+
+    def __init__(self, scale=1.0, translate_percent=None, translate_px=None,
+                 rotate=0.0, shear=0.0, fillcolor=0,
+                 name=None, deterministic=False, random_state=None):
+        super(PILAffine, self).__init__(
+            scale=scale,
+            translate_percent=translate_percent,
+            translate_px=translate_px,
+            rotate=rotate,
+            shear=shear,
+            order=1,
+            cval=fillcolor,
+            mode="constant",
+            fit_output=False,
+            backend="auto"
+        )
+
+    def _augment_batch(self, batch, random_state, parents, hooks):
+        cols = batch.get_column_names()
+        assert len(cols) == 0 or (len(cols) == 1 and "images" in cols), (
+            "PILAffine can currently only process image data. Got a batch "
+            "containing: %s. Use imgaug.augmenters.geometric.Affine for "
+            "batches containing non-image data." % (", ".join(cols),))
+
+        return super()._augment_batch(batch, random_state, parents, hooks)
+
+    def _augment_images_by_samples(self, images, samples,
+                                   image_shapes=None,
+                                   return_matrices=False):
+        assert return_matrices is False, (
+            "Got unexpectedly return_matrices=True. PILAffine does not yet "
+            "produce that output.")
+
+        nb_images = len(images)
+        for i, image in enumerate(images):
+            image_shape = (image.shape if image_shapes is None
+                           else image_shapes[i])
+
+            params = samples.get_affine_parameters(
+                i, arr_shape=image_shape, image_shape=image_shape)
+
+            image[...] = pil_affine(
+                image,
+                scale_x=params["scale_x"],
+                scale_y=params["scale_y"],
+                translate_x_px=params["translate_x_px"],
+                translate_y_px=params["translate_y_px"],
+                rotate_deg=params["rotate_deg"],
+                shear_x_deg=params["shear_x_deg"],
+                shear_y_deg=params["shear_y_deg"],
+                fillcolor=tuple(samples.cval[i]))
+
+        return images
+
+    def get_parameters(self):
+        """See :func:`imgaug.augmenters.meta.Augmenter.get_parameters`."""
+        return [
+            self.scale, self.translate, self.rotate, self.shear, self.cval]

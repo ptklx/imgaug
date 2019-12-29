@@ -640,6 +640,9 @@ class Test_pil_affine(unittest.TestCase):
 
 
 class TestPILSolarize(unittest.TestCase):
+    def setUp(self):
+        reseed()
+
     def test_returns_correct_instance(self):
         aug = iaa.PILSolarize()
         assert isinstance(aug, iaa.Invert)
@@ -651,6 +654,9 @@ class TestPILSolarize(unittest.TestCase):
 
 
 class TestPILPosterize(unittest.TestCase):
+    def setUp(self):
+        reseed()
+
     def test_returns_posterize(self):
         aug = iaa.PILPosterize()
         assert isinstance(aug, iaa.Posterize)
@@ -744,6 +750,9 @@ class TestPILAutocontrast(unittest.TestCase):
 
 
 class TestPILColor(unittest.TestCase):
+    def setUp(self):
+        reseed()
+
     def test___init___defaults(self):
         aug = iaa.PILColor()
         assert np.isclose(aug.factor.a.value, 0.0)
@@ -798,6 +807,9 @@ class TestPILColor(unittest.TestCase):
 # we don't have to test very much here, because some functions of the base
 # class are already tested via PILColor
 class TestPILContrast(unittest.TestCase):
+    def setUp(self):
+        reseed()
+
     @mock.patch("imgaug.augmenters.pil.pil_contrast")
     def test_mocked(self, mock_pilco):
         aug = iaa.PILContrast(0.75)
@@ -838,6 +850,9 @@ class TestPILContrast(unittest.TestCase):
 # we don't have to test very much here, because some functions of the base
 # class are already tested via PILColor
 class TestPILBrightness(unittest.TestCase):
+    def setUp(self):
+        reseed()
+
     @mock.patch("imgaug.augmenters.pil.pil_brightness")
     def test_mocked(self, mock_pilbr):
         aug = iaa.PILBrightness(0.75)
@@ -873,6 +888,9 @@ class TestPILBrightness(unittest.TestCase):
 # we don't have to test very much here, because some functions of the base
 # class are already tested via PILColor
 class TestPILSharpness(unittest.TestCase):
+    def setUp(self):
+        reseed()
+
     @mock.patch("imgaug.augmenters.pil.pil_sharpness")
     def test_mocked(self, mock_pilsh):
         aug = iaa.PILSharpness(0.75)
@@ -904,3 +922,118 @@ class TestPILSharpness(unittest.TestCase):
         hm_aug = aug(heatmaps=hm)
 
         assert np.allclose(hm_aug.get_arr(), hm.get_arr())
+
+
+class TestPILAffine(unittest.TestCase):
+    def setUp(self):
+        reseed()
+
+    @mock.patch("imgaug.augmenters.pil.pil_affine")
+    def test_mocked(self, mock_pilaff):
+        aug = iaa.PILAffine(
+            scale={"x": 1.25, "y": 1.5},
+            translate_px={"x": 10, "y": 20},
+            rotate=30,
+            shear={"x": 40, "y": 50},
+            fillcolor=100
+        )
+        image = np.zeros((3, 3, 3), dtype=np.uint8)
+        mock_pilaff.return_value = np.full((3, 3, 3), 128, dtype=np.uint8)
+
+        image_aug = aug(image=image)
+
+        assert mock_pilaff.call_count == 1
+
+        args = mock_pilaff.call_args_list[0][0]
+        assert np.all(args[0] == 128)  # due to in-place change
+
+        kwargs = mock_pilaff.call_args_list[0][1]
+        assert np.isclose(kwargs["scale_x"], 1.25)
+        assert np.isclose(kwargs["scale_y"], 1.5)
+        assert np.isclose(kwargs["translate_x_px"], 10)
+        assert np.isclose(kwargs["translate_y_px"], 20)
+        assert np.isclose(kwargs["rotate_deg"], 30)
+        assert np.isclose(kwargs["shear_x_deg"], 40)
+        assert np.isclose(kwargs["shear_y_deg"], 50)
+        assert np.isclose(kwargs["fillcolor"][0], 100)
+        assert np.isclose(kwargs["fillcolor"][1], 100)
+        assert np.isclose(kwargs["fillcolor"][2], 100)
+        assert np.all(image_aug == 128)
+
+    @mock.patch("imgaug.augmenters.pil.pil_affine")
+    def test_mocked_translate_percent(self, mock_pilaff):
+        aug = iaa.PILAffine(
+            translate_percent={"x": 1.2, "y": 1.5}
+        )
+        image = np.zeros((20, 50, 3), dtype=np.uint8)
+        mock_pilaff.return_value = np.full((20, 50, 3), 128, dtype=np.uint8)
+
+        image_aug = aug(image=image)
+
+        assert mock_pilaff.call_count == 1
+
+        args = mock_pilaff.call_args_list[0][0]
+        assert np.all(args[0] == 128)  # due to in-place change
+
+        kwargs = mock_pilaff.call_args_list[0][1]
+        assert np.isclose(kwargs["scale_x"], 1.0)
+        assert np.isclose(kwargs["scale_y"], 1.0)
+        assert np.isclose(kwargs["translate_x_px"], 50*1.2)
+        assert np.isclose(kwargs["translate_y_px"], 20*1.5)
+        assert np.isclose(kwargs["rotate_deg"], 0)
+        assert np.isclose(kwargs["shear_x_deg"], 0)
+        assert np.isclose(kwargs["shear_y_deg"], 0)
+        assert np.isclose(kwargs["fillcolor"][0], 0)
+        assert np.isclose(kwargs["fillcolor"][1], 0)
+        assert np.isclose(kwargs["fillcolor"][2], 0)
+        assert np.all(image_aug == 128)
+
+    def test_parameters_affect_images(self):
+        params = [
+            ("scale", {"x": 1.3}),
+            ("scale", {"y": 1.5}),
+            ("translate_px", {"x": 5}),
+            ("translate_px", {"y": 10}),
+            ("translate_percent", {"x": 0.3}),
+            ("translate_percent", {"y": 0.4}),
+            ("rotate", 10),
+            ("shear", {"x": 20}),
+            ("shear", {"y": 20})
+        ]
+        image = ia.quokka_square((64, 64))
+
+        images_aug = []
+        for param_name, param_val in params:
+            kwargs = {param_name: param_val}
+            aug = iaa.PILAffine(**kwargs)
+            image_aug = aug(image=image)
+            images_aug.append(image_aug)
+
+        for i, image_aug in enumerate(images_aug):
+            assert not np.array_equal(image_aug, image)
+            for j, other_image_aug in enumerate(images_aug):
+                if i != j:
+                    assert not np.array_equal(image_aug, other_image_aug)
+
+    def test_batch_contains_no_images(self):
+        aug = iaa.PILAffine(translate_px={"x": 10})
+        hm_arr = np.ones((3, 3, 1), dtype=np.float32)
+        hm = ia.HeatmapsOnImage(hm_arr, shape=(3, 3, 3))
+
+        with self.assertRaises(AssertionError):
+            hm_aug = aug(heatmaps=hm)
+
+    def test_get_parameters(self):
+        aug = iaa.PILAffine(
+            scale={"x": 1.25, "y": 1.5},
+            translate_px={"x": 10, "y": 20},
+            rotate=30,
+            shear={"x": 40, "y": 50},
+            fillcolor=100
+        )
+        params = aug.get_parameters()
+        assert params[0] is aug.scale
+        assert params[1] is aug.translate
+        assert params[2] is aug.rotate
+        assert params[3] is aug.shear
+        assert params[4] is aug.cval
