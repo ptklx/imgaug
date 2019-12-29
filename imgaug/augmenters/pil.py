@@ -38,6 +38,7 @@ from . import arithmetic
 from . import color
 from . import contrast
 from . import geometric
+from . import size
 from .. import parameters as iap
 
 
@@ -651,23 +652,26 @@ def pil_sharpness(image, factor):
     return _apply_enhance_func(image, PIL.ImageEnhance.Sharpness, factor)
 
 
+# TODO unify this with the matrix generation for Affine,
+#      there is probably no need to keep these separate
 def _pil_create_affine_matrix(scale_x=1.0, scale_y=1.0,
                               translate_x_px=0, translate_y_px=0,
                               rotate_deg=0,
-                              shear_x_deg=0, shear_y_deg=0):
+                              shear_x_deg=0, shear_y_deg=0,
+                              center_px=(0, 0)):
     scale_x = max(scale_x, 0.0001)
     scale_y = max(scale_y, 0.0001)
-    scale_x = 1 / scale_x
-    scale_y = 1 / scale_y
-
-    translate_x_px = (-1) * translate_x_px
-    translate_y_px = (-1) * translate_y_px
 
     rotate_rad, shear_x_rad, shear_y_rad = np.deg2rad([rotate_deg,
                                                        shear_x_deg,
                                                        shear_y_deg])
-    shear_x_rad = (-1) * shear_x_rad
-    shear_y_rad = (-1) * shear_y_rad
+    rotate_rad = (-1) * rotate_rad
+
+    matrix_centerize = np.array([
+        [1, 0, (-1) * center_px[0]],
+        [0, 1, (-1) * center_px[1]],
+        [0, 0, 1]
+    ], dtype=np.float32)
 
     matrix_scale = np.array([
         [scale_x, 0, 0],
@@ -693,14 +697,24 @@ def _pil_create_affine_matrix(scale_x=1.0, scale_y=1.0,
         [0, 0, 1]
     ], dtype=np.float32)
 
+    matrix_decenterize = np.array([
+        [1, 0, center_px[0]],
+        [0, 1, center_px[1]],
+        [0, 0, 1]
+    ], dtype=np.float32)
+
     matrix = np.array([
         [1, 0, 0],
         [0, 1, 0],
-        [0, 0, 0]
+        [0, 0, 1]
     ], dtype=np.float32)
-    for other_matrix in [matrix_rotate, matrix_shear,
-                         matrix_scale, matrix_translate]:
-        matrix = np.matmul(matrix, other_matrix)
+    for other_matrix in [matrix_centerize,
+                         matrix_rotate, matrix_shear,
+                         matrix_scale, matrix_translate,
+                         matrix_decenterize]:
+        matrix = np.matmul(other_matrix, matrix)
+
+    matrix = np.linalg.inv(matrix)
 
     return matrix
 
@@ -710,7 +724,8 @@ def pil_affine(image,
                translate_x_px=0, translate_y_px=0,
                rotate_deg=0,
                shear_x_deg=0, shear_y_deg=0,
-               fillcolor=None):
+               fillcolor=None,
+               center=(0.5, 0.5)):
     """Apply an affine transformation to an image.
 
     This function has identical outputs to
@@ -722,39 +737,49 @@ def pil_affine(image,
         The image to modify. Expected to be ``uint8`` with shape ``(H,W)``
         or ``(H,W,C)`` with ``C`` being ``3`` or ``4``.
 
-    scale_x : number
+    scale_x : number, optional
         Affine scale factor along the x-axis, where ``1.0`` denotes an
         identity transform and ``2.0`` is a strong zoom-in effect.
 
-    scale_y : number
+    scale_y : number, optional
         Affine scale factor along the y-axis, where ``1.0`` denotes an
         identity transform and ``2.0`` is a strong zoom-in effect.
 
-    translate_x_px : number
+    translate_x_px : number, optional
         Affine translation along the x-axis in pixels.
         Positive values translate the image towards the right.
 
-    translate_y_px : number
+    translate_y_px : number, optional
         Affine translation along the y-axis in pixels.
         Positive values translate the image towards the bottom.
 
-    rotate_deg : number
+    rotate_deg : number, optional
         Affine rotation in degrees *around the top left* of the image.
 
-    shear_x_deg : number
+    shear_x_deg : number, optional
         Affine shearing in degrees along the x-axis with center point
         being the top-left of the image.
 
-    shear_y_deg : number
+    shear_y_deg : number, optional
         Affine shearing in degrees along the y-axis with center point
         being the top-left of the image.
 
-    fillcolor : None or int or tuple of int
+    fillcolor : None or int or tuple of int, optional
         Color tuple or intensity value to use when filling up newly
         created pixels. ``None`` fills with zeros. ``int`` will only fill
         the ``0`` th channel with that intensity value and all other channels
         with ``0`` (this is the default behaviour of PIL, use a tuple to
         fill all channels).
+
+    center : tuple of number, optional
+        Center xy-coordinate of the affine transformation, given as *relative*
+        values, i.e. ``(0.0, 0.0)`` sets the transformation center to the
+        top-left image corner, ``(1.0, 0.0)`` sets it to the the top-right
+        image corner and ``(0.5, 0.5)`` sets it to the image center.
+        The transformation center is relevant e.g. for rotations ("rotate
+        around this center point"). PIL uses the image top-left corner
+        as the transformation center if no centerization is included in the
+        affine transformation matrix.
 
     Returns
     -------
@@ -770,13 +795,17 @@ def pil_affine(image,
         return np.copy(image)
 
     image_pil = PIL.Image.fromarray(image)
+
+    height, width = image.shape[0:2]
+    center_px = (width * center[0], height * center[1])
     matrix = _pil_create_affine_matrix(scale_x=scale_x,
                                        scale_y=scale_y,
                                        translate_x_px=translate_x_px,
                                        translate_y_px=translate_y_px,
                                        rotate_deg=rotate_deg,
                                        shear_x_deg=shear_x_deg,
-                                       shear_y_deg=shear_y_deg)
+                                       shear_y_deg=shear_y_deg,
+                                       center_px=center_px)
     matrix = matrix[:2, :].flat
 
     return np.asarray(
@@ -1236,6 +1265,14 @@ class PILAffine(geometric.Affine):
         Use :class:`imgaug.augmenters.geometric.Affine` if you have to
         transform such inputs.
 
+    .. note ::
+
+        This augmenter uses the image center as the transformation center.
+        This has to be explicitly enforced in PIL using corresponding
+        translation matrices. Without such translation, PIL uses the image
+        top left corner as the transformation center. To mirror that
+        behaviour, use ``center=(0.0, 0.0)``.
+
     dtype support::
 
         * ``uint8``: yes; tested
@@ -1271,6 +1308,17 @@ class PILAffine(geometric.Affine):
 
     fillcolor : number or tuple of number or list of number or imgaug.ALL or imgaug.parameters.StochasticParameter, optional
         See parameter ``cval`` in :class:`imgaug.augmenters.geometric.Affine`.
+
+    center : {'uniform', 'normal', 'center', 'left-top', 'left-center', 'left-bottom', 'center-top', 'center-center', 'center-bottom', 'right-top', 'right-center', 'right-bottom'} or tuple of float or StochasticParameter or tuple of StochasticParameter, optional
+        The center point of the affine transformation, given as relative
+        xy-coordinates.
+        Set this to ``(0.0, 0.0)`` or ``left-top`` to use the top left image
+        corner as the transformation center.
+        Set this to ``(0.5, 0.5)`` or ``center-center`` to use the image
+        center as the transformation center.
+        See also paramerer ``position`` in
+        :class:`imgaug.augmenters.size.PadToFixedSize` for details
+        about valid datatypes of this parameter.
 
     name : None or str, optional
         See :func:`imgaug.augmenters.meta.Augmenter.__init__`.
@@ -1309,7 +1357,7 @@ class PILAffine(geometric.Affine):
     """
 
     def __init__(self, scale=1.0, translate_percent=None, translate_px=None,
-                 rotate=0.0, shear=0.0, fillcolor=0,
+                 rotate=0.0, shear=0.0, fillcolor=0, center=(0.5, 0.5),
                  name=None, deterministic=False, random_state=None):
         super(PILAffine, self).__init__(
             scale=scale,
@@ -1323,6 +1371,8 @@ class PILAffine(geometric.Affine):
             fit_output=False,
             backend="auto"
         )
+        # TODO move that func to iap
+        self.center = size._handle_position_parameter(center)
 
     def _augment_batch(self, batch, random_state, parents, hooks):
         cols = batch.get_column_names()
@@ -1331,7 +1381,8 @@ class PILAffine(geometric.Affine):
             "containing: %s. Use imgaug.augmenters.geometric.Affine for "
             "batches containing non-image data." % (", ".join(cols),))
 
-        return super()._augment_batch(batch, random_state, parents, hooks)
+        return super(PILAffine, self)._augment_batch(
+            batch, random_state, parents, hooks)
 
     def _augment_images_by_samples(self, images, samples,
                                    image_shapes=None,
@@ -1357,11 +1408,36 @@ class PILAffine(geometric.Affine):
                 rotate_deg=params["rotate_deg"],
                 shear_x_deg=params["shear_x_deg"],
                 shear_y_deg=params["shear_y_deg"],
-                fillcolor=tuple(samples.cval[i]))
+                fillcolor=tuple(samples.cval[i]),
+                center=(samples.center_x[i], samples.center_y[i])
+            )
 
         return images
+
+    def _draw_samples(self, nb_samples, random_state):
+        # standard affine samples
+        samples = super(PILAffine, self)._draw_samples(nb_samples,
+                                                       random_state)
+
+        # add samples for 'center' parameter, which is not yet a part of
+        # Affine
+        if isinstance(self.center, tuple):
+            xx = self.center[0].draw_samples(nb_samples,
+                                             random_state=random_state)
+            yy = self.center[1].draw_samples(nb_samples,
+                                             random_state=random_state)
+        else:
+            xy = self.center.draw_samples((nb_samples, 2),
+                                          random_state=random_state)
+            xx = xy[:, 0]
+            yy = xy[:, 1]
+
+        samples.center_x = xx
+        samples.center_y = yy
+        return samples
 
     def get_parameters(self):
         """See :func:`imgaug.augmenters.meta.Augmenter.get_parameters`."""
         return [
-            self.scale, self.translate, self.rotate, self.shear, self.cval]
+            self.scale, self.translate, self.rotate, self.shear, self.cval,
+            self.center]

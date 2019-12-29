@@ -398,6 +398,7 @@ class Test_pil_affine(unittest.TestCase):
                             image_warped = iaa.pil_affine(
                                 image,
                                 fillcolor=fillcolor,
+                                center=(0.0, 0.0),
                                 **{arg_name: arg_value})
 
                             image_warped_exp = np.asarray(
@@ -561,7 +562,7 @@ class Test_pil_affine(unittest.TestCase):
         image = np.zeros((20, 20, 3), dtype=np.uint8)
         image[0, 10] = 255
 
-        image_aug = iaa.pil_affine(image, rotate_deg=45)
+        image_aug = iaa.pil_affine(image, rotate_deg=45, center=(0.0, 0.0))
 
         assert image_aug[7, 7, 0] == 255
 
@@ -569,7 +570,7 @@ class Test_pil_affine(unittest.TestCase):
         image = np.zeros((20, 20, 3), dtype=np.uint8)
         image[5, 10] = 255
 
-        image_aug = iaa.pil_affine(image, shear_x_deg=20)
+        image_aug = iaa.pil_affine(image, shear_x_deg=20, center=(0.0, 0.0))
 
         y, x = np.unravel_index(np.argmax(image_aug[..., 0]),
                                 image_aug.shape[0:2])
@@ -581,7 +582,7 @@ class Test_pil_affine(unittest.TestCase):
         image = np.zeros((20, 20, 3), dtype=np.uint8)
         image[10, 15] = 255
 
-        image_aug = iaa.pil_affine(image, shear_y_deg=20)
+        image_aug = iaa.pil_affine(image, shear_y_deg=20, center=(0.0, 0.0))
 
         y, x = np.unravel_index(np.argmax(image_aug[..., 0]),
                                 image_aug.shape[0:2])
@@ -637,6 +638,15 @@ class Test_pil_affine(unittest.TestCase):
         assert np.all(image_aug[:, :1, 1] == 3)
         assert np.all(image_aug[:, :1, 2] == 4)
         assert np.all(image_aug[:, 1:, :] == 1)
+
+    def test_center(self):
+        image = np.zeros((21, 21, 3), dtype=np.uint8)
+        image[2, 10] = 255
+
+        image_aug = iaa.pil_affine(image, rotate_deg=90,
+                                   center=(0.5, 0.5))
+
+        assert image_aug[10, 18, 0] == 255
 
 
 class TestPILSolarize(unittest.TestCase):
@@ -935,7 +945,8 @@ class TestPILAffine(unittest.TestCase):
             translate_px={"x": 10, "y": 20},
             rotate=30,
             shear={"x": 40, "y": 50},
-            fillcolor=100
+            fillcolor=100,
+            center=(0.1, 0.2)
         )
         image = np.zeros((3, 3, 3), dtype=np.uint8)
         mock_pilaff.return_value = np.full((3, 3, 3), 128, dtype=np.uint8)
@@ -958,6 +969,8 @@ class TestPILAffine(unittest.TestCase):
         assert np.isclose(kwargs["fillcolor"][0], 100)
         assert np.isclose(kwargs["fillcolor"][1], 100)
         assert np.isclose(kwargs["fillcolor"][2], 100)
+        assert np.isclose(kwargs["center"][0], 0.1)
+        assert np.isclose(kwargs["center"][1], 0.2)
         assert np.all(image_aug == 128)
 
     @mock.patch("imgaug.augmenters.pil.pil_affine")
@@ -986,6 +999,8 @@ class TestPILAffine(unittest.TestCase):
         assert np.isclose(kwargs["fillcolor"][0], 0)
         assert np.isclose(kwargs["fillcolor"][1], 0)
         assert np.isclose(kwargs["fillcolor"][2], 0)
+        assert np.isclose(kwargs["center"][0], 0.5)
+        assert np.isclose(kwargs["center"][1], 0.5)
         assert np.all(image_aug == 128)
 
     def test_parameters_affect_images(self):
@@ -1029,7 +1044,8 @@ class TestPILAffine(unittest.TestCase):
             translate_px={"x": 10, "y": 20},
             rotate=30,
             shear={"x": 40, "y": 50},
-            fillcolor=100
+            fillcolor=100,
+            center=(0.1, 0.2)
         )
         params = aug.get_parameters()
         assert params[0] is aug.scale
@@ -1037,3 +1053,4 @@ class TestPILAffine(unittest.TestCase):
         assert params[2] is aug.rotate
         assert params[3] is aug.shear
         assert params[4] is aug.cval
+        assert params[5] is aug.center
