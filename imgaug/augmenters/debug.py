@@ -360,32 +360,6 @@ def draw_debug_image(images, heatmaps=None, segmentation_maps=None,
 
     Generate a debug image for two empty images.
 
-    >>> from imgaug.augmentables.kps import KeypointsOnImage
-    >>> kpsoi = KeypointsOnImage.from_xy_array([(10.5, 20.5), (30.5, 30.5)],
-    >>>                                        shape=image.shape)
-    >>> debug_image = iaa.draw_debug_image(images=[image, image],
-    >>>                                    keypoints=[kpsoi, kpsoi)
-
-    Generate a debug image for two empty images, each having two keypoints
-    drawn on them.
-
-    >>> from imgaug.augmentables.batches import UnnormalizedBatch
-    >>> segmap_arr = np.zeros((32, 32, 1), dtype=np.int32)
-    >>> kp_tuples = [(10.5, 20.5), (30.5, 30.5)]
-    >>> batch = UnnormalizedBatch(images=[image, image],
-    >>>                           segmentation_maps=[segmap_arr, segmap_arr],
-    >>>                           keypoints=[kp_tuples, kp_tuples])
-    >>> batch = batch.to_normalized_batch()
-    >>> debug_image = iaa.draw_debug_image(
-    >>>     images=batch.images_unaug,
-    >>>     segmentation_maps=batch.segmentation_maps_unaug,
-    >>>     keypoints=batch.keypoints_unaug)
-
-    Generate a debug image for two empty images, each having an empty
-    segmentation map and two keypoints drawn on them. This example uses
-    ``UnnormalizedBatch`` to show how to mostly evade going through imgaug
-    classes.
-
     """
     columns = [_create_images_column(images)]
 
